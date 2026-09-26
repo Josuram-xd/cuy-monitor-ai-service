@@ -20,7 +20,7 @@ Farm laptop                                   AWS EC2 (Docker network)
 ```
 
 - The service **measures and classifies**; it never decides health state (that's the backend's State + Chain).
-- It is the only producer of `BEHAVIOR` and `AUDIO` events, sent to the backend's single ingestion endpoint (no message broker, see backend ADR-007).
+- It is the only producer of `BEHAVIOR` and `AUDIO` events, sent to the backend's single ingestion endpoint (direct HTTP, see backend ADR-003).
 - It never touches Postgres.
 
 ## 2. Components
