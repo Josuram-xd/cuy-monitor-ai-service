@@ -34,7 +34,7 @@
 
 ### Task 3 — Mock que manda eventos al backend
 
-🔗 **Depende de:** seguir con las Task 2.2–2.5 del repo `cuy-monitor-backend` (endpoint `/api/ingestion/events` desplegado)
+🔗 **Depende de:** seguir con las Task 2.3–2.6 del repo `cuy-monitor-backend` (endpoint `/api/ingestion/events` desplegado)
 
 - [ ] **Task 3.1** — `feat(messaging): add backend client with retries and bounded buffer`
   `httpx`, reintento con backoff en `5xx`/red, sin reintento en `400`/`401`, mismo `eventId` en cada reintento.
@@ -45,7 +45,7 @@
 
 ### Task 4 — Docker y despliegue
 
-🔗 **Depende de:** `cuy-monitor-backend` Task 2.4 (compose con el perfil `ai`)
+🔗 **Depende de:** `cuy-monitor-backend` Task 2.5 (compose con el perfil `ai`)
 
 - [ ] **Task 4.1** — `build: add Dockerfile on python:3.14-slim`
 - [ ] **Task 4.2** — *(sin commit)* clonar el repo al lado del backend en la EC2 y levantar con `docker compose --profile ai up -d --build`
