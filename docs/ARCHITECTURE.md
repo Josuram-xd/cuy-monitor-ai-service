@@ -1,7 +1,7 @@
 # Architecture — cuy-monitor-ai-service
 
 > Python 3.14 · FastAPI 0.141 · ONNX Runtime 1.26 · YOLO26n (Ultralytics, exported to ONNX) · scikit-learn 1.9 · httpx · scipy
-> Runs as a Docker container (`python:3.14-slim`) next to the backend on the EC2. Last reviewed: 2026-09-26
+> Runs as a Docker container (`python:3.14-slim`) next to the backend on the EC2 (Docker Compose, not Lambda — backend ADR-010). Last reviewed: 2026-10-03
 
 ## 1. Context
 
@@ -21,7 +21,8 @@ Farm laptop                                   AWS EC2 (Docker network)
 
 - The service **measures and classifies**; it never decides health state (that's the backend's State + Chain).
 - It is the only producer of `BEHAVIOR` and `AUDIO` events, sent to the backend's single ingestion endpoint (direct HTTP, see backend ADR-003).
-- It never touches Postgres.
+- It never touches the database (Amazon RDS, schema in `cuy-monitor-db`).
+- User login (JWT) only applies to the dashboard. This service and the `edge_agent` authenticate with `X-API-Key`, never with a user account.
 
 ## 2. Components
 
@@ -121,7 +122,7 @@ Source of truth: `cuy-monitor-backend/docs/contracts/`. `app/contracts/events.py
 | `POST /ai/audio` | `X-API-Key` | `multipart/form-data`: `file` (WAV), `capturedAt`, `cageId` | `202` |
 | `GET /ai/health` | none | — | `{ "status": "UP", "models": { "detector": true, "behavior": true, "audio": true }, "backend": true }` |
 
-**Routing note:** Caddy uses `handle /ai/*` (it does **not** strip the prefix), so FastAPI routes must be declared with the `/ai` prefix.
+**Routing note:** Caddy uses `handle /ai/*` (it does **not** strip the prefix), so FastAPI routes must be declared with the `/ai` prefix. The dashboard is served by the same Caddy at `/`, so never declare routes outside `/ai`.
 
 ## 6. Models
 
@@ -160,7 +161,9 @@ Source of truth: `cuy-monitor-backend/docs/contracts/`. `app/contracts/events.py
 - Built by `cuy-monitor-backend/infra/docker-compose.yml` with `build: ../../cuy-monitor-ai-service` → clone both repos side by side on the EC2.
 - Starts only with the `ai` profile: `docker compose --profile ai up -d --build`.
 - Port 8000 is never published; only reachable through Caddy.
-- Needs the EC2 resized to **c7i-flex.large** (4 GB) before enabling it with real models.
+- Needs the EC2 resized to **c7i-flex.large** (4 GB) before enabling it with real models. Postgres no longer runs on the EC2 (moved to RDS), which frees ~150 MB.
+- Why not Lambda: frames arrive 1–2 per second all day, ONNX models (~1 GB) would reload on every cold start, and the backend's STOMP WebSocket needs a long-running host anyway (backend ADR-010).
+- `edge_agent` can also run as a container on a **Linux** laptop (`docker run --restart unless-stopped --env-file edge_agent/.env ...`); on Windows run it natively as a service (Docker Desktop on an old Celeron is too heavy).
 - Start command: `uvicorn app.main:app --host 0.0.0.0 --port 8000`.
 
 ## 10. Testing
@@ -169,7 +172,7 @@ Source of truth: `cuy-monitor-backend/docs/contracts/`. `app/contracts/events.py
 |---|---|
 | Unit | `features.py` with synthetic tracks; tracker ID stability; `events.py` serializes exactly to the contract JSON |
 | Contract | Sample JSONs from `cuy-monitor-backend/docs/contracts/examples/` must validate against `events.py` |
-| Integration | `dev/simulator.py` + backend running locally (`docker-compose.dev.yml` for Postgres + backend from the IDE) |
+| Integration | `dev/simulator.py` + backend running locally (`cuy-monitor-db/docker-compose.yml` for Postgres + backend from the IDE with profile `dev`) |
 | Performance | fps and RAM on the EC2 and on the Celeron laptop (input for ADR-005) |
 
 ## 11. Decisions

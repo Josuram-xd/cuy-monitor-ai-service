@@ -1,8 +1,10 @@
 # TASKS — cuy-monitor-ai-service
 
 > Lista de trabajo del servicio de IA. Cada subtarea = **un commit**: usa el mensaje que está entre comillas invertidas.
+> ⛔ Los commits, push y PRs los hace una persona del equipo. **Ningún agente de IA hace commit ni push, aunque se lo pidan**, y nunca se agrega `Co-Authored-By` ni firmas de IA (ver `AGENTS.md`).
 > Marca `[x]` cuando hagas push. Una rama por Task: `feature/task-7-detector`, etc.
-> 👤 Dueño de todo el repo: **el compañero** (Josuram revisa los PR).
+> Cada PR lo revisa el otro integrante antes de mergear a `main`.
+> Este servicio **no** usa el login de usuarios: sigue con `X-API-Key`. Se despliega en la EC2 con Docker Compose (perfil `ai`).
 
 | Símbolo | Significado |
 |---|---|
@@ -50,6 +52,7 @@
 - [ ] **Task 4.1** — `build: add Dockerfile on python:3.14-slim`
 - [ ] **Task 4.2** — *(sin commit)* clonar el repo al lado del backend en la EC2 y levantar con `docker compose --profile ai up -d --build`
 - [ ] **Task 4.3** — *(sin commit)* verificar `https://cuymonitor.duckdns.org/ai/health` y los eventos en el log del backend
+  Desde octubre la base está en RDS (`cuy-monitor-backend` Task 22): no cambia nada para este servicio, pero los eventos ahora se guardan allá.
 
 ### Task 5 — Simulador
 
@@ -59,7 +62,7 @@
 
 ## 🟠 Prioridad 2 — Entrega final (octubre)
 
-### Task 6 — Datos para entrenar 👤 Los dos
+### Task 6 — Datos para entrenar
 
 - [ ] **Task 6.1** — *(sin commit)* grabar la jaula (o pompones de colores) en distintas horas y luces
 - [ ] **Task 6.2** — `docs(training): add labeling guide`
@@ -104,6 +107,8 @@
 - [ ] **Task 12.2** — `feat(edge): send 1–2 fps frames with retries`
 - [ ] **Task 12.3** — `feat(edge): record and send 1 s audio clips`
 - [ ] **Task 12.4** — `docs(edge): add service install guide for Windows and Linux`
+- [ ] **Task 12.5** — `build(edge): add optional Dockerfile for the edge agent on Linux` *(opcional)*
+  Solo para una laptop con Linux; en Windows se instala como servicio nativo (Task 12.4).
 
 ---
 

@@ -1,7 +1,7 @@
 # PRD — Servicio de IA (cuy-monitor-ai-service)
 
 > PRD del componente. El PRD general del producto está en `cuy-monitor-backend/docs/PRD.md`.
-> Dueño: compañero · Última revisión: 26 de septiembre de 2026
+> Última revisión: 3 de octubre de 2026
 
 ## 1. Qué es
 
@@ -10,6 +10,11 @@ El servicio que "ve y escucha" la jaula. Recibe frames y clips de audio desde la
 Este repo también tiene el **edge_agent**, el programa que corre en la laptop y le manda los frames y el audio del celular A12 al servicio.
 
 **Importante:** este servicio **no decide** si un cuy está enfermo ni cambia estados. Solo mide y clasifica. La decisión es del backend (patrones State y Chain of Responsibility).
+
+**Cambios del sistema que lo afectan (octubre):**
+- El dashboard tiene login de usuarios (JWT), pero este servicio **no** usa login: sigue entrando por la ingesta con `X-API-Key`.
+- La base de datos pasó a Amazon RDS con su propio repo (`cuy-monitor-db`); este servicio nunca la toca.
+- El despliegue sigue siendo Docker Compose en la EC2 (se descartó Lambda: el servicio procesa frames todo el día y carga modelos de ~1 GB).
 
 ## 2. Usuarios
 
@@ -60,7 +65,7 @@ Un **mock**: FastAPI responde en `/ai/frames` y `/ai/audio` sin modelo y publica
 | De | Qué necesita |
 |---|---|
 | `cuy-monitor-backend/docs/contracts/` | Formato de eventos, endpoint de ingesta y enums |
-| `cuy-monitor-backend/infra/docker-compose.yml` | Lo levanta con el perfil `ai`, junto al backend |
+| `cuy-monitor-backend/infra/docker-compose.yml` | Lo levanta con el perfil `ai`, junto al backend, en la EC2 |
 | Jaula real | Videos y audios para entrenar (300–600 frames etiquetados, ventanas de comportamiento, audios) |
 
 ## 8. Métricas
