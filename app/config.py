@@ -18,6 +18,13 @@ class Settings(BaseSettings):
     window_seconds: int = Field(default=60, ge=1)
     mock_mode: bool = True
 
+    # real mode: Amazon Bedrock looks at the frames. On the EC2 the credentials come from the
+    # instance role, so there is no key to configure.
+    aws_region: str = "us-east-1"
+    bedrock_model_id: str = "us.amazon.nova-2-lite-v1:0"
+    # frames sent to the model per window (evenly spread): more is better but costs more
+    window_max_frames: int = Field(default=6, ge=1, le=20)
+
 
 @lru_cache
 def get_settings() -> Settings:
