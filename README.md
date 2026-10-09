@@ -8,6 +8,8 @@ for component boundaries, and [`TASKS.md`](TASKS.md) for implementation status.
 
 Install [uv](https://docs.astral.sh/uv/), then run:
 
+Copy `.env.example` to `.env` and replace `API_KEY` with a local secret.
+
 ```bash
 uv sync
 uv run pytest

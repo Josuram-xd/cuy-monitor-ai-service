@@ -24,7 +24,7 @@
 - [x] **Task 1.3** — `feat(config): add settings from environment variables`
   `BACKEND_URL`, `API_KEY`, `CAGE_ID`, `WINDOW_SECONDS`, `MOCK_MODE`.
 - [x] **Task 1.4** — `feat(api): add FastAPI app with GET /ai/health`
-- [ ] **Task 1.5** — `feat(security): add X-API-Key dependency`
+- [x] **Task 1.5** — `feat(security): add X-API-Key dependency`
 
 ### Task 2 — Contratos
 
