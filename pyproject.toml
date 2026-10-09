@@ -4,7 +4,9 @@ version = "0.1.0"
 description = "Cuy Monitor vision and audio analysis service"
 readme = "README.md"
 requires-python = ">=3.14,<3.15"
-dependencies = []
+dependencies = [
+    "pydantic-settings>=2.11",
+]
 
 [dependency-groups]
 dev = [
