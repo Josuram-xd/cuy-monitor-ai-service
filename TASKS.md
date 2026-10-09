@@ -19,7 +19,7 @@
 
 ### Task 1 — Proyecto base
 
-- [ ] **Task 1.1** — `chore: init Python 3.14 project with uv, ruff and pytest`
+- [x] **Task 1.1** — `chore: init Python 3.14 project with uv, ruff and pytest`
 - [x] **Task 1.2** — `docs: add PRD, ARCHITECTURE and AGENTS`
 - [ ] **Task 1.3** — `feat(config): add settings from environment variables`
   `BACKEND_URL`, `API_KEY`, `CAGE_ID`, `WINDOW_SECONDS`, `MOCK_MODE`.
