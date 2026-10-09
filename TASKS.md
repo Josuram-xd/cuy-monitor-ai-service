@@ -30,9 +30,9 @@
 
 🔗 **Depende de:** seguir con las Task 3.2–3.4 del repo `cuy-monitor-backend`
 
-- [ ] **Task 2.1** — `feat(contracts): add MarkColor and EventType enums`
-- [ ] **Task 2.2** — `feat(contracts): add event envelope and payload models with camelCase aliases`
-- [ ] **Task 2.3** — `test(contracts): validate backend example JSON files`
+- [x] **Task 2.1** — `feat(contracts): add MarkColor and EventType enums`
+- [x] **Task 2.2** — `feat(contracts): add event envelope and payload models with camelCase aliases`
+- [x] **Task 2.3** — `test(contracts): validate backend example JSON files`
 
 ### Task 3 — Mock que manda eventos al backend
 
