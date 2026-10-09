@@ -12,7 +12,7 @@ Farm laptop                                   AWS EC2 (Docker network)
 │  reads A12 stream    │   POST /ai/frames    │                  │                          │
 │  1–2 fps JPEG        │   POST /ai/audio     │                  │ httpx (internal network) │
 │  ~1 s WAV clips      │                      │                  ▼                          │
-└──────────────────────┘                      │   POST http://backend:8080/api/ingestion/events
+└──────────────────────┘                      │   POST http://backend:8080/api/v1/ingestion/events
         ▲ HTTP (LAN)                          │                  │                          │
  Samsung A12 (IP Webcam)                      │                  ▼                          │
                                               │   cuy-monitor-backend (Java) processes      │
@@ -28,7 +28,9 @@ Farm laptop                                   AWS EC2 (Docker network)
 
 ```
 app/
-├── main.py              FastAPI app: /ai/frames, /ai/audio, /ai/health
+├── main.py              FastAPI app and background task lifecycle
+├── api/
+│   └── ingestion.py     Authenticated frame and audio upload endpoints
 ├── config.py            pydantic-settings: BACKEND_URL, API_KEY, CAGE_ID, thresholds, model paths
 ├── security.py          X-API-Key dependency
 ├── contracts/
@@ -45,8 +47,10 @@ app/
 ├── audio/
 │   ├── embeddings.py    YAMNet converted to ONNX → 1024-d embeddings
 │   └── classifier.py    SVM/KNN over embeddings → NORMAL | DISTRESS + probability
-└── messaging/
-    └── backend_client.py  httpx.AsyncClient → POST /api/ingestion/events, retry with backoff, bounded buffer
+├── messaging/
+│   └── backend_client.py  httpx client, retry with backoff and bounded event buffer
+└── mock/
+    └── producer.py        Contract-valid BEHAVIOR and AUDIO events per window
 models/                  .onnx / .joblib (not committed if heavy — GitHub Releases or Git LFS)
 training/                Colab notebooks and scripts (NOT in the Docker image)
 edge_agent/              runs on the farm laptop (NOT in the Docker image)
@@ -67,7 +71,7 @@ POST /ai/frames (JPEG)
    → every 60 s per guinea pig:
         features = { stillSeconds, feederVisits, watererVisits, avgGroupDistance }
         probAnomaly = random_forest.predict_proba(features)
-        send BEHAVIOR event → POST /api/ingestion/events
+        send BEHAVIOR event → POST /api/v1/ingestion/events
 ```
 
 - Response to the edge_agent is fast (`202 Accepted`); inference must not block the event loop — run ONNX in a thread pool (`run_in_threadpool` / `asyncio.to_thread`).
@@ -80,7 +84,7 @@ POST /ai/frames (JPEG)
 POST /ai/audio (WAV, ~1 s, 16 kHz mono)
    → YAMNet ONNX embeddings
    → SVM/KNN → label NORMAL | DISTRESS, probability
-   → send AUDIO event → POST /api/ingestion/events  (per clip, or aggregated every 10 s)
+   → send AUDIO event → POST /api/v1/ingestion/events  (per clip, or aggregated every 10 s)
 ```
 
 Audio events are cage-level (no guinea pig).
@@ -109,7 +113,7 @@ Source of truth: `cuy-monitor-backend/docs/contracts/`. `app/contracts/events.py
 { "label": "DISTRESS", "probability": 0.88, "durationMs": 960 }
 ```
 
-- Sent as JSON to `POST {BACKEND_URL}/api/ingestion/events` with header `X-API-Key`. Field names in `camelCase` (use Pydantic `alias_generator=to_camel`).
+- Sent as JSON to `POST {BACKEND_URL}/api/v1/ingestion/events` with header `X-API-Key`. Field names in `camelCase` (use Pydantic `alias_generator=to_camel`).
 - `eventId` is generated once (uuid4) and **kept on retries**, so the backend can drop duplicates.
 - Backend responses: `202` ok · `400`/`401` log and drop (retrying won't help) · `5xx` or network error → retry with backoff (1 s → 30 s), keep at most ~500 pending events in memory, drop the oldest.
 - `MarkColor`: `RED, BLUE, GREEN, YELLOW, ORANGE, PURPLE, BLACK, WHITE`.
@@ -121,6 +125,8 @@ Source of truth: `cuy-monitor-backend/docs/contracts/`. `app/contracts/events.py
 | `POST /ai/frames` | `X-API-Key` | `multipart/form-data`: `file` (JPEG), `capturedAt` (ISO-8601), `cageId` | `202` |
 | `POST /ai/audio` | `X-API-Key` | `multipart/form-data`: `file` (WAV), `capturedAt`, `cageId` | `202` |
 | `GET /ai/health` | none | — | `{ "status": "UP", "models": { "detector": false, "behavior": false, "audio": false }, "mockMode": true }` |
+
+In mock mode, the upload endpoints validate the media type and return `202`; the background producer queues one contract-valid `BEHAVIOR` and one `AUDIO` event each configured window. Inference endpoints return `503` when mock mode is disabled until real models are implemented.
 
 **Routing note:** Caddy uses `handle /ai/*` (it does **not** strip the prefix), so FastAPI routes must be declared with the `/ai` prefix. The dashboard is served by the same Caddy at `/`, so never declare routes outside `/ai`.
 

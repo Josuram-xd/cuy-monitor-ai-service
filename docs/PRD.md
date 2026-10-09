@@ -19,7 +19,7 @@ Este repo también tiene el **edge_agent**, el programa que corre en la laptop y
 ## 2. Usuarios
 
 No tiene usuario final directo. Sus "clientes" son:
-- El **backend** (recibe sus eventos en `POST /api/ingestion/events`).
+- El **backend** (recibe sus eventos en `POST /api/v1/ingestion/events`).
 - El **equipo técnico** (entrena modelos, ajusta zonas y umbrales, revisa que esté vivo).
 
 ## 3. Requisitos funcionales
@@ -34,7 +34,7 @@ No tiene usuario final directo. Sus "clientes" son:
 | IA-06 | Calcular por cuy, cada 60 s: `stillSeconds`, `feederVisits`, `watererVisits`, `avgGroupDistance` | Final |
 | IA-07 | Clasificar cada ventana con Random Forest → `probAnomaly` | Final |
 | IA-08 | Clasificar audio (YAMNet en ONNX + SVM/KNN) → `NORMAL` o `DISTRESS` | Final |
-| IA-09 | Mandar eventos `BEHAVIOR` y `AUDIO` a `POST /api/ingestion/events` con el formato del contrato, reintentando si el backend no responde | Avance (valores inventados) / Final |
+| IA-09 | Mandar eventos `BEHAVIOR` y `AUDIO` a `POST /api/v1/ingestion/events` con el formato del contrato, reintentando si el backend no responde | Avance (valores inventados) / Final |
 | IA-10 | edge_agent: leer el stream del A12, mandar 1–2 fps y audio, reintentar si se cae internet | Final |
 | IA-11 | Simulador que reproduce un video grabado como si fuera la cámara en vivo | Avance/Final |
 

@@ -47,7 +47,7 @@ docker build -t cuy-monitor-ai-service:local .
 1. **Este servicio no decide la salud.** No calcules estados (`NORMAL`, `ALERT`…) ni generes alertas. Solo mide y publica. Eso es del backend Java.
 2. **Nunca inventes un color.** Si la detección no es confiable, manda `detectionConfidence` baja; el backend decide qué hacer.
 3. Los eventos que publicas tienen que coincidir **exactamente** con `cuy-monitor-backend/docs/contracts/`. Si necesitas un campo nuevo, no lo agregues aquí primero: propónselo al usuario para que se cambie el contrato en el backend.
-4. Los resultados se mandan con `POST {BACKEND_URL}/api/ingestion/events` (sobre común, tipos `BEHAVIOR` y `AUDIO`, header `X-API-Key`). No agregues colas ni brokers de mensajes: la comunicación es HTTP directo. Si el backend no responde, reintenta con backoff usando el mismo `eventId`; en `400`/`401` no reintentes.
+4. Los resultados se mandan con `POST {BACKEND_URL}/api/v1/ingestion/events` (sobre común, tipos `BEHAVIOR` y `AUDIO`, header `X-API-Key`). No agregues colas ni brokers de mensajes: la comunicación es HTTP directo. Si el backend no responde, reintenta con backoff usando el mismo `eventId`; en `400`/`401` no reintentes.
 5. Las rutas HTTP llevan el prefijo `/ai` (Caddy no lo quita).
 6. La inferencia (ONNX) no puede bloquear el event loop de FastAPI: córrela en un thread.
 

@@ -16,4 +16,6 @@ uv run pytest
 uv run ruff check .
 ```
 
-Runtime configuration and API routes are introduced in the following project tasks.
+The service exposes authenticated `POST /ai/frames` and `POST /ai/audio` multipart routes.
+In mock mode they accept supported media and a background producer sends contract-valid
+`BEHAVIOR` and `AUDIO` events to the backend once per configured window.

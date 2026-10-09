@@ -36,14 +36,14 @@
 
 ### Task 3 — Mock que manda eventos al backend
 
-🔗 **Depende de:** seguir con las Task 2.3–2.6 del repo `cuy-monitor-backend` (endpoint `/api/ingestion/events` desplegado)
+🔗 **Depende de:** seguir con las Task 2.3–2.6 del repo `cuy-monitor-backend` (endpoint `/api/v1/ingestion/events` desplegado)
 
-- [ ] **Task 3.1** — `feat(messaging): add backend client with retries and bounded buffer`
+- [x] **Task 3.1** — `feat(messaging): add backend client with retries and bounded buffer`
   `httpx`, reintento con backoff en `5xx`/red, sin reintento en `400`/`401`, mismo `eventId` en cada reintento.
-- [ ] **Task 3.2** — `feat(api): add POST /ai/frames returning 202 in mock mode`
-- [ ] **Task 3.3** — `feat(api): add POST /ai/audio returning 202 in mock mode`
-- [ ] **Task 3.4** — `feat(mock): send fake BEHAVIOR and AUDIO events every window`
-- [ ] **Task 3.5** — `test(messaging): cover retry and no-retry cases`
+- [x] **Task 3.2** — `feat(api): add POST /ai/frames returning 202 in mock mode`
+- [x] **Task 3.3** — `feat(api): add POST /ai/audio returning 202 in mock mode`
+- [x] **Task 3.4** — `feat(mock): send fake BEHAVIOR and AUDIO events every window`
+- [x] **Task 3.5** — `test(messaging): cover retry and no-retry cases`
 
 ### Task 4 — Docker y despliegue
 
