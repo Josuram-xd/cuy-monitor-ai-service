@@ -120,7 +120,7 @@ Source of truth: `cuy-monitor-backend/docs/contracts/`. `app/contracts/events.py
 |---|---|---|---|
 | `POST /ai/frames` | `X-API-Key` | `multipart/form-data`: `file` (JPEG), `capturedAt` (ISO-8601), `cageId` | `202` |
 | `POST /ai/audio` | `X-API-Key` | `multipart/form-data`: `file` (WAV), `capturedAt`, `cageId` | `202` |
-| `GET /ai/health` | none | — | `{ "status": "UP", "models": { "detector": true, "behavior": true, "audio": true }, "backend": true }` |
+| `GET /ai/health` | none | — | `{ "status": "UP", "models": { "detector": false, "behavior": false, "audio": false }, "mockMode": true }` |
 
 **Routing note:** Caddy uses `handle /ai/*` (it does **not** strip the prefix), so FastAPI routes must be declared with the `/ai` prefix. The dashboard is served by the same Caddy at `/`, so never declare routes outside `/ai`.
 
