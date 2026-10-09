@@ -1,9 +1,33 @@
+import asyncio
+import logging
+from contextlib import asynccontextmanager
 from typing import Literal
 
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
 from app.config import get_settings
+from app.messaging.backend_client import BackendEventClient
+
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    client = BackendEventClient(get_settings())
+    app.state.backend_event_client = client
+    worker = asyncio.create_task(client.run())
+    try:
+        yield
+    finally:
+        if client.pending_count:
+            logger.warning("Stopping with %s backend events still buffered", client.pending_count)
+        worker.cancel()
+        try:
+            await worker
+        except asyncio.CancelledError:
+            pass
+        await client.close()
 
 
 class ModelStatus(BaseModel):
@@ -18,7 +42,8 @@ class HealthResponse(BaseModel):
     mock_mode: bool = Field(serialization_alias="mockMode")
 
 
-app = FastAPI(title="Cuy Monitor AI Service")
+app = FastAPI(title="Cuy Monitor AI Service", lifespan=lifespan)
+app = FastAPI(title="Cuy Monitor AI Service", lifespan=lifespan)
 
 
 @app.get("/ai/health", response_model=HealthResponse)
