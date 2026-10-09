@@ -49,10 +49,18 @@
 
 🔗 **Depende de:** `cuy-monitor-backend` Task 2.5 (compose con el perfil `ai`)
 
-- [ ] **Task 4.1** — `build: add Dockerfile on python:3.14-slim`
+- [x] **Task 4.1** — `build: add Dockerfile on python:3.14-slim`
 - [ ] **Task 4.2** — *(sin commit)* clonar el repo al lado del backend en la EC2 y levantar con `docker compose --profile ai up -d --build`
 - [ ] **Task 4.3** — *(sin commit)* verificar `https://cuymonitor.duckdns.org/ai/health` y los eventos en el log del backend
   Desde octubre la base está en RDS (`cuy-monitor-backend` Task 22): no cambia nada para este servicio, pero los eventos ahora se guardan allá.
+
+### Task 4b — Análisis con Amazon Bedrock (en lugar de modelos entrenados, para la demo)
+
+- [x] **Task 4b.1** — `feat(bedrock): add Converse runtime wrapper`
+- [x] **Task 4b.2** — `feat(vision): analyse each 60 s window of frames with a Bedrock vision model`
+- [x] **Task 4b.3** — `feat(audio): classify clips with a loudness and shrillness rule`
+- [x] **Task 4b.4** — `feat(api): keep frames and send AUDIO/BEHAVIOR events outside mock mode`
+  Las Tasks 7 a 11 (YOLO, tracker, Random Forest, YAMNet) quedan como la alternativa entrenada: el contrato de eventos no cambia.
 
 ### Task 5 — Simulador
 

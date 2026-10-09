@@ -60,15 +60,3 @@ def test_ingestion_endpoints_reject_unsupported_media(client, path, filename, co
     )
 
     assert response.status_code == 415
-
-
-@pytest.mark.parametrize("client", ["false"], indirect=True)
-def test_ingestion_endpoints_return_unavailable_when_mock_mode_is_disabled(client):
-    response = client.post(
-        "/ai/audio",
-        headers={"X-API-Key": "test-secret"},
-        data={"capturedAt": "2026-10-05T14:32:00Z", "cageId": "cage-test"},
-        files={"file": ("clip.wav", b"mock media", "audio/wav")},
-    )
-
-    assert response.status_code == 503

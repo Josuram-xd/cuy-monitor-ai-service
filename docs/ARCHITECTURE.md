@@ -24,6 +24,24 @@ Farm laptop                                   AWS EC2 (Docker network)
 - It never touches the database (Amazon RDS, schema in `cuy-monitor-db`).
 - User login (JWT) only applies to the dashboard. This service and the `edge_agent` authenticate with `X-API-Key`, never with a user account.
 
+## 1.1 Analysis engine (decision for the demo)
+
+The components in section 2 describe the **trained-model** design (YOLO + tracker + Random Forest +
+YAMNet). That needs labelled data and training that do not exist yet. The service currently runs on
+**Amazon Bedrock** instead (`MOCK_MODE=false`):
+
+| Input | Engine | Output |
+|---|---|---|
+| Frames (`/ai/frames`) | A Bedrock vision model (default Amazon Nova 2 Lite) over up to 6 frames per 60 s window | one `BEHAVIOR` per guinea pig seen (`app/vision/`) |
+| Audio (`/ai/audio`) | Signal rule: loudness x energy above 2 kHz (`app/audio/classifier.py`) | `AUDIO` `DISTRESS` / `NORMAL` |
+
+The model's answer is untrusted input: `app/vision/analysis.py` validates every field, drops
+impossible items and never lets a Bedrock failure produce made-up events. The event contract and the
+backend do not change, so the trained models can replace this engine later without touching either.
+On the EC2 the Bedrock credentials come from the instance role. Cost is about one call per minute.
+
+---
+
 ## 2. Components
 
 ```
