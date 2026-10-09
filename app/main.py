@@ -6,6 +6,7 @@ from typing import Literal
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
+from app.api.ingestion import router as ingestion_router
 from app.config import get_settings
 from app.messaging.backend_client import BackendEventClient
 
@@ -43,7 +44,7 @@ class HealthResponse(BaseModel):
 
 
 app = FastAPI(title="Cuy Monitor AI Service", lifespan=lifespan)
-app = FastAPI(title="Cuy Monitor AI Service", lifespan=lifespan)
+app.include_router(ingestion_router)
 
 
 @app.get("/ai/health", response_model=HealthResponse)
