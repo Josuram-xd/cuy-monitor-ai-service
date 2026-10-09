@@ -1,0 +1,12 @@
+{
+  "eventId": "c2e8a6f4-5d17-4b0c-9e3a-41f7b8d60a25",
+  "type": "WEIGHT",
+  "cageId": "cage-1",
+  "timestamp": "2026-10-05T14:32:20Z",
+  "source": "arduino",
+  "schemaVersion": 1,
+  "payload": {
+    "grams": 812.4,
+    "stable": true
+  }
+}

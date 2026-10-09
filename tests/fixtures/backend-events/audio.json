@@ -1,0 +1,13 @@
+{
+  "eventId": "7b9d4c10-2e61-4f3a-8a57-0c5e1d2b9f42",
+  "type": "AUDIO",
+  "cageId": "cage-1",
+  "timestamp": "2026-10-05T14:32:10Z",
+  "source": "ai-service",
+  "schemaVersion": 1,
+  "payload": {
+    "label": "DISTRESS",
+    "probability": 0.88,
+    "durationMs": 960
+  }
+}
