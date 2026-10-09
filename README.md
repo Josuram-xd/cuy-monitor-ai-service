@@ -19,3 +19,14 @@ uv run ruff check .
 The service exposes authenticated `POST /ai/frames` and `POST /ai/audio` multipart routes.
 In mock mode they accept supported media and a background producer sends contract-valid
 `BEHAVIOR` and `AUDIO` events to the backend once per configured window.
+
+To replay a local recording at a maximum of one frame per second, set `API_KEY` in the
+environment and run:
+
+```powershell
+$env:API_KEY = "<local-api-key>"
+uv run python dev/simulator.py .\recording.mp4 --ai-url http://localhost:8000 --cage-id cage-1
+```
+
+The simulator samples frames according to the source video's frame rate. Use `--source-fps`
+if the video does not provide valid frame-rate metadata.

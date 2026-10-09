@@ -56,7 +56,7 @@
 
 ### Task 5 — Simulador
 
-- [ ] **Task 5.1** — `feat(dev): add simulator that replays a video as a live camera`
+- [x] **Task 5.1** — `feat(dev): add simulator that replays a video as a live camera`
 
 ---
 
