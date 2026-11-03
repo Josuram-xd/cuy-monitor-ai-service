@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
 from app.api.ingestion import router as ingestion_router
+from app.audio.throttle import CalmAudioThrottle
 from app.bedrock.runtime import BedrockRuntime
 from app.config import get_settings
 from app.messaging.backend_client import BackendEventClient
@@ -26,8 +27,7 @@ async def lifespan(app: FastAPI):
     worker = asyncio.create_task(client.run())
     # mock mode: fake events. Real mode: Amazon Bedrock looks at the frames gathered each window.
     app.state.frame_windows = FrameWindows()
-    # cage id -> when its last calm clip was reported
-    app.state.last_normal_audio_at = {}
+    app.state.calm_audio_throttle = CalmAudioThrottle(settings.window_seconds)
     if settings.mock_mode:
         producer = asyncio.create_task(run_mock_producer(client, settings))
     else:
