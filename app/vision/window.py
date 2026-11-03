@@ -1,7 +1,28 @@
+from __future__ import annotations
+
 from collections import deque
 
 # a minute at 2 fps is 120 frames; keep a bit more than that, never grow without limit
 MAX_BUFFERED_FRAMES = 240
+
+
+class FrameWindows:
+    """One FrameWindow per cage, created the first time a frame of that cage arrives."""
+
+    def __init__(self, max_frames: int = MAX_BUFFERED_FRAMES):
+        self._max_frames = max_frames
+        self._windows: dict[str, FrameWindow] = {}
+
+    def __len__(self) -> int:
+        return sum(len(window) for window in self._windows.values())
+
+    def for_cage(self, cage_id: str) -> FrameWindow:
+        if cage_id not in self._windows:
+            self._windows[cage_id] = FrameWindow(self._max_frames)
+        return self._windows[cage_id]
+
+    def items(self) -> list[tuple[str, FrameWindow]]:
+        return list(self._windows.items())
 
 
 class FrameWindow:

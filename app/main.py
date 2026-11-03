@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import time
 from contextlib import asynccontextmanager
 from typing import Literal
 
@@ -14,7 +13,7 @@ from app.messaging.backend_client import BackendEventClient
 from app.mock.producer import run_mock_producer
 from app.vision.analysis import BedrockBehaviorAnalyzer
 from app.vision.pipeline import run_behavior_pipeline
-from app.vision.window import FrameWindow
+from app.vision.window import FrameWindows
 
 logger = logging.getLogger(__name__)
 
@@ -26,8 +25,9 @@ async def lifespan(app: FastAPI):
     app.state.backend_event_client = client
     worker = asyncio.create_task(client.run())
     # mock mode: fake events. Real mode: Amazon Bedrock looks at the frames gathered each window.
-    app.state.frame_window = FrameWindow()
-    app.state.last_normal_audio_at = -settings.window_seconds - time.monotonic()
+    app.state.frame_windows = FrameWindows()
+    # cage id -> when its last calm clip was reported
+    app.state.last_normal_audio_at = {}
     if settings.mock_mode:
         producer = asyncio.create_task(run_mock_producer(client, settings))
     else:
@@ -35,7 +35,7 @@ async def lifespan(app: FastAPI):
             BedrockRuntime(settings.aws_region), settings.bedrock_model_id, settings.window_seconds
         )
         producer = asyncio.create_task(
-            run_behavior_pipeline(client, analyzer, app.state.frame_window, settings)
+            run_behavior_pipeline(client, analyzer, app.state.frame_windows, settings)
         )
     try:
         yield
