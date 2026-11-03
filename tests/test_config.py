@@ -26,3 +26,15 @@ def test_settings_reject_non_positive_window(monkeypatch):
 
     with pytest.raises(ValidationError):
         Settings(_env_file=None)
+
+
+def test_the_allowed_cages_default_to_the_single_cage():
+    settings = Settings(_env_file=None, api_key="k", cage_id="cage-7")
+
+    assert settings.allowed_cages == ["cage-7"]
+
+
+def test_several_cages_are_a_comma_separated_list():
+    settings = Settings(_env_file=None, api_key="k", cage_ids=" cage-1 ,cage-0a1b2c3d,, ")
+
+    assert settings.allowed_cages == ["cage-1", "cage-0a1b2c3d"]
