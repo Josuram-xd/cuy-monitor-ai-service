@@ -38,7 +38,7 @@ def _require_content_type(file: UploadFile, accepted_types: set[str]) -> None:
 
 
 def _require_known_cage(cage_id: str, settings: Settings) -> None:
-    if cage_id != settings.cage_id:
+    if cage_id not in settings.allowed_cages:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=f"Unknown cage: {cage_id}")
 
 
@@ -63,7 +63,7 @@ async def submit_frame(
     _require_known_cage(cage_id, settings)
     frame = await _read_limited(file, MAX_FRAME_BYTES)
     # the analysis happens once per window, over the frames gathered by then
-    request.app.state.frame_window.add(frame)
+    request.app.state.frame_windows.for_cage(cage_id).add(frame)
     return AcceptedResponse(mock_mode=False)
 
 
@@ -90,14 +90,15 @@ async def submit_audio(
     state = request.app.state
     now = time.monotonic()
     if result.label is AudioLabel.NORMAL:
-        if now - state.last_normal_audio_at < settings.window_seconds:
+        last = state.last_normal_audio_at.get(cage_id)
+        if last is not None and now - last < settings.window_seconds:
             return AcceptedResponse(mock_mode=False)
-        state.last_normal_audio_at = now
+        state.last_normal_audio_at[cage_id] = now
     await state.backend_event_client.enqueue_event(
         EventEnvelope(
             event_id=uuid4(),
             type=EventType.AUDIO,
-            cage_id=settings.cage_id,
+            cage_id=cage_id,
             timestamp=datetime.now(UTC),
             source="ai-service",
             schema_version=1,

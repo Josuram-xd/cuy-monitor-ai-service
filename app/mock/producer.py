@@ -18,12 +18,15 @@ from app.messaging.backend_client import BackendEventClient
 Sleep = Callable[[float], Awaitable[None]]
 
 
-def create_mock_events(settings: Settings) -> tuple[EventEnvelope, EventEnvelope]:
+def create_mock_events(
+    settings: Settings, cage_id: str | None = None
+) -> tuple[EventEnvelope, EventEnvelope]:
+    cage_id = cage_id or settings.cage_id
     timestamp = datetime.now(UTC)
     behavior_event = EventEnvelope(
         event_id=uuid4(),
         type=EventType.BEHAVIOR,
-        cage_id=settings.cage_id,
+        cage_id=cage_id,
         timestamp=timestamp,
         source="ai-service",
         schema_version=1,
@@ -41,7 +44,7 @@ def create_mock_events(settings: Settings) -> tuple[EventEnvelope, EventEnvelope
     audio_event = EventEnvelope(
         event_id=uuid4(),
         type=EventType.AUDIO,
-        cage_id=settings.cage_id,
+        cage_id=cage_id,
         timestamp=timestamp,
         source="ai-service",
         schema_version=1,
@@ -61,5 +64,6 @@ async def run_mock_producer(
 ) -> None:
     while True:
         await sleep(settings.window_seconds)
-        for event in create_mock_events(settings):
-            await client.enqueue_event(event)
+        for cage_id in settings.allowed_cages:
+            for event in create_mock_events(settings, cage_id):
+                await client.enqueue_event(event)
