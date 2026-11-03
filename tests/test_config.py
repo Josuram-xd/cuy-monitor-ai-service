@@ -38,3 +38,10 @@ def test_several_cages_are_a_comma_separated_list():
     settings = Settings(_env_file=None, api_key="k", cage_ids=" cage-1 ,cage-0a1b2c3d,, ")
 
     assert settings.allowed_cages == ["cage-1", "cage-0a1b2c3d"]
+
+
+def test_a_settings_object_knows_which_cages_it_accepts():
+    settings = Settings(_env_file=None, api_key="k", cage_ids="cage-1,cage-2")
+
+    assert settings.accepts_cage("cage-2")
+    assert not settings.accepts_cage("cage-9")

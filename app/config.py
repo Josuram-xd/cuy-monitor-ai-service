@@ -35,6 +35,9 @@ class Settings(BaseSettings):
         cages = [cage.strip() for cage in self.cage_ids.split(",") if cage.strip()]
         return cages or [self.cage_id]
 
+    def accepts_cage(self, cage_id: str) -> bool:
+        return cage_id in self.allowed_cages
+
 
 @lru_cache
 def get_settings() -> Settings:
