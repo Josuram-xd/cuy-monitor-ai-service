@@ -49,7 +49,7 @@ app/
 ├── main.py              FastAPI app and background task lifecycle
 ├── api/
 │   └── ingestion.py     Authenticated frame and audio upload endpoints
-├── config.py            pydantic-settings: BACKEND_URL, API_KEY, CAGE_ID, thresholds, model paths
+├── config.py            pydantic-settings: BACKEND_URL, API_KEY, CAGE_ID/CAGE_IDS, thresholds, model paths
 ├── security.py          X-API-Key dependency
 ├── contracts/
 │   ├── events.py        Pydantic models — faithful copy of backend docs/contracts
@@ -175,7 +175,8 @@ In mock mode, the upload endpoints validate the media type and return `202`; the
 |---|---|---|
 | `BACKEND_URL` | `http://backend:8080` | Set by Compose (internal Docker network, no HTTPS needed) |
 | `API_KEY` | — | Same `API_KEY` as the backend (`infra/.env`) |
-| `CAGE_ID` | `cage-1` | |
+| `CAGE_ID` | `cage-1` | Default cage (mock events, and the only one when `CAGE_IDS` is empty) |
+| `CAGE_IDS` | empty | Every cage served, comma separated (`cage-1,cage-0a1b2c3d`). Each cage has its own frame window and its events carry its own `cageId`. The codes come from the dashboard ("Mis jaulas") |
 | `WINDOW_SECONDS` | `60` | |
 | `MIN_DETECTION_CONFIDENCE` | `0.5` | |
 | `MOCK_MODE` | `false` | Force fake events |
