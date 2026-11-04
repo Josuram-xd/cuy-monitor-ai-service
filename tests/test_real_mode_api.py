@@ -60,7 +60,7 @@ def test_a_frame_is_kept_for_the_next_analysis(client):
 
     assert response.status_code == 202
     assert response.json() == {"status": "accepted", "mockMode": False}
-    assert len(app.state.frame_window) == 1
+    assert len(app.state.frame_windows.for_cage("cage-1")) == 1
 
 
 def test_a_frame_for_another_cage_is_refused(client):
@@ -72,7 +72,7 @@ def test_a_frame_for_another_cage_is_refused(client):
     )
 
     assert response.status_code == 400
-    assert len(app.state.frame_window) == 0
+    assert len(app.state.frame_windows) == 0
 
 
 def test_a_huge_frame_is_refused(client):
@@ -132,3 +132,53 @@ def test_real_mode_still_needs_the_api_key(client):
     )
 
     assert response.status_code == 401
+
+
+@pytest.fixture
+def two_cages(monkeypatch):
+    monkeypatch.setenv("API_KEY", "test-secret")
+    monkeypatch.setenv("MOCK_MODE", "false")
+    monkeypatch.setenv("CAGE_ID", "cage-1")
+    monkeypatch.setenv("CAGE_IDS", "cage-1, cage-0a1b2c3d")
+    get_settings.cache_clear()
+    with TestClient(app) as test_client:
+        app.state.backend_event_client = _Client()
+        yield test_client
+    get_settings.cache_clear()
+
+
+def test_each_cage_has_its_own_frame_window(two_cages):
+    for cage in ("cage-1", "cage-0a1b2c3d", "cage-0a1b2c3d"):
+        response = two_cages.post(
+            "/ai/frames",
+            headers=HEADERS,
+            data=FORM | {"cageId": cage},
+            files={"file": ("f.jpg", b"jpeg", "image/jpeg")},
+        )
+        assert response.status_code == 202
+
+    assert len(app.state.frame_windows.for_cage("cage-1")) == 1
+    assert len(app.state.frame_windows.for_cage("cage-0a1b2c3d")) == 2
+
+
+def test_an_audio_event_carries_the_cage_it_came_from(two_cages):
+    response = two_cages.post(
+        "/ai/audio",
+        headers=HEADERS,
+        data=FORM | {"cageId": "cage-0a1b2c3d"},
+        files={"file": ("c.wav", _wav(1200, 0.6), "audio/wav")},
+    )
+
+    assert response.status_code == 202
+    assert [event.cage_id for event in app.state.backend_event_client.events] == ["cage-0a1b2c3d"]
+
+
+def test_a_cage_outside_the_list_is_still_refused(two_cages):
+    response = two_cages.post(
+        "/ai/frames",
+        headers=HEADERS,
+        data=FORM | {"cageId": "cage-9"},
+        files={"file": ("f.jpg", b"jpeg", "image/jpeg")},
+    )
+
+    assert response.status_code == 400

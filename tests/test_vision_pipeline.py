@@ -6,7 +6,7 @@ from app.bedrock.runtime import BedrockError
 from app.config import Settings
 from app.contracts import BehaviorEventPayload, EventType, MarkColor
 from app.vision.pipeline import analyze_window_once, run_behavior_pipeline
-from app.vision.window import FrameWindow
+from app.vision.window import FrameWindow, FrameWindows
 
 
 def _settings() -> Settings:
@@ -96,9 +96,10 @@ async def test_a_model_failure_loses_the_window_and_reports_nothing():
 
 
 @pytest.mark.anyio
-async def test_the_loop_waits_a_window_then_analyses():
-    window = FrameWindow()
-    window.add(b"1")
+async def test_the_loop_waits_a_window_then_analyses_every_cage_on_its_own():
+    windows = FrameWindows()
+    windows.for_cage("cage-1").add(b"1")
+    windows.for_cage("cage-2").add(b"2")
     analyzer, client = _Analyzer([_payload(MarkColor.GREEN)]), _Client()
     sleeps: list[float] = []
 
@@ -108,7 +109,8 @@ async def test_the_loop_waits_a_window_then_analyses():
             raise asyncio.CancelledError
 
     with pytest.raises(asyncio.CancelledError):
-        await run_behavior_pipeline(client, analyzer, window, _settings(), sleep=sleep)
+        await run_behavior_pipeline(client, analyzer, windows, _settings(), sleep=sleep)
 
     assert sleeps == [60, 60]
-    assert len(client.events) == 1
+    assert analyzer.seen == [[b"1"], [b"2"]]
+    assert [e.cage_id for e in client.events] == ["cage-1", "cage-2"]
