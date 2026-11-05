@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -33,6 +34,10 @@ class Settings(BaseSettings):
     bedrock_model_id: str = "us.amazon.nova-2-lite-v1:0"
     # frames sent to the model per window (evenly spread): more is better but costs more
     window_max_frames: int = Field(default=6, ge=1, le=20)
+
+    # the trained detector (Task 7). Missing file = no detector, never an error: see /ai/health
+    detector_path: Path = Path("models/detector.onnx")
+    detector_confidence: float = Field(default=0.35, gt=0, lt=1)
 
     @property
     def allowed_cages(self) -> list[str]:

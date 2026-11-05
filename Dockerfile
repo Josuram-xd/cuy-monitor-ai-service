@@ -6,12 +6,18 @@ ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 # dependencies first: this layer is cached until pyproject.toml or uv.lock change
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
+# the trained detector from a GitHub Release (Task 7.4); without DETECTOR_URL the image has none
+ARG DETECTOR_URL=""
+ARG DETECTOR_SHA256=""
+COPY scripts/fetch_models.py ./scripts/
+RUN DETECTOR_URL="$DETECTOR_URL" DETECTOR_SHA256="$DETECTOR_SHA256" python scripts/fetch_models.py
 
 FROM python:3.14-slim
 WORKDIR /app
 RUN groupadd --system app && useradd --system --gid app --home-dir /app app
 COPY --from=build /app/.venv /app/.venv
 COPY app ./app
+COPY --from=build --chown=app:app /app/models ./models
 ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1
 USER app
 EXPOSE 8000
