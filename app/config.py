@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     cage_ids: str = ""
     window_seconds: int = Field(default=60, ge=1)
     mock_mode: bool = True
+    # mock mode only: replay a test scenario (healthy, lethargic, distress, recovery) instead of
+    # random events, for the guinea pigs of these mark colours. Empty = random events as before.
+    mock_scenario: str = ""
+    mock_colors: str = "RED,BLUE,GREEN,YELLOW"
 
     # real mode: Amazon Bedrock looks at the frames. On the EC2 the credentials come from the
     # instance role, so there is no key to configure.

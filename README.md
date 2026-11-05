@@ -20,6 +20,35 @@ The service exposes authenticated `POST /ai/frames` and `POST /ai/audio` multipa
 In mock mode they accept supported media and a background producer sends contract-valid
 `BEHAVIOR` and `AUDIO` events to the backend once per configured window.
 
+## Test data to try the models
+
+Nothing here is a recording of a real cage: every sample is generated in `app/testdata/`, so no audio
+or frames end up in the repo.
+
+| What | Where | What it tests |
+|---|---|---|
+| Synthetic clips: `silence`, `rustle`, `chirp` (normal) and `squeal` (distress) | `app/testdata/audio.py` | The audio classifier (loudness x shrillness) |
+| Scenarios: `healthy`, `lethargic`, `distress`, `recovery` | `app/testdata/scenarios.py` | The backend's anomaly chain: NORMAL → OBSERVED → ALERT → CRITICAL and back |
+| Recorded answers of the vision model, replayed by `ScriptedRuntime` | `app/testdata/model_answers.py` | The Bedrock analyzer, offline and without cost |
+
+Replay a scenario as the mock producer, in every cage of `CAGE_IDS`:
+
+```bash
+MOCK_MODE=true MOCK_SCENARIO=lethargic MOCK_COLORS=RED,BLUE uv run uvicorn app.main:app --port 8000
+```
+
+Or inject it straight into a backend, faster than one window a minute:
+
+```bash
+uv run python -m dev.inject_test_data --api-key "$API_KEY" --cage-id cage-1 \
+  behavior --scenario lethargic --colors RED,BLUE --windows 12 --interval 5 --backend-url http://localhost:8080
+uv run python -m dev.inject_test_data --api-key "$API_KEY" audio --kind squeal --count 3 --ai-url http://localhost:8000
+```
+
+The colours must be guinea pigs registered in that cage, or the backend drops the windows. With the
+backend's default times, ALERT needs the anomaly to last 30 minutes in OBSERVED; for a quick try run
+the backend with `--app.health.observed-to-alert=5s --app.health.alert-to-critical=5s`.
+
 ## Real mode (Amazon Bedrock)
 
 With `MOCK_MODE=false` the service stops inventing events and looks at what it receives:
