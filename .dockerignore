@@ -10,3 +10,5 @@ tests
 dev
 docs
 *.md
+training
+models

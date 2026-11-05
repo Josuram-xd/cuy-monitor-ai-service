@@ -10,3 +10,7 @@ htmlcov/
 !.env.example
 dist/
 build/
+
+# trained models are published in GitHub Releases, never committed
+models/*.onnx
+models/*.joblib

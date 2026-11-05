@@ -75,16 +75,20 @@
 ### Task 6 — Datos para entrenar
 
 - [ ] **Task 6.1** — *(sin commit)* grabar la jaula (o pompones de colores) en distintas horas y luces
-- [ ] **Task 6.2** — `docs(training): add labeling guide`
+- [x] **Task 6.2** — `docs(training): add labeling guide`
+  `training/LABELING.md`: caja al cuerpo entero, clase = color de la marca, sin marca visible no se etiqueta.
 - [ ] **Task 6.3** — *(sin commit)* etiquetar 300–600 frames en Label Studio o Roboflow
-- [ ] **Task 6.4** — `chore(training): add labeled dataset export (without raw media)`
+- [x] **Task 6.4** — `chore(training): add labeled dataset export (without raw media)`
+  `training/prepare_dataset.py --labels-only` → `training/dataset/` (etiquetas, `data.yaml`, `manifest.csv` con sha256). Se llena al terminar la 6.3.
 
 ### Task 7 — Detector
 
-- [ ] **Task 7.1** — `feat(training): add YOLO26n training script with ONNX export`
+- [x] **Task 7.1** — `feat(training): add YOLO26n training script with ONNX export`
+  `training/train_detector.py` (Colab) + `training/synthetic_dataset.py` para probar la cadena sin grabar la jaula.
 - [ ] **Task 7.2** — *(sin commit)* entrenar en Colab y subir `detector.onnx` a GitHub Releases
-- [ ] **Task 7.3** — `feat(vision): add ONNX detector returning boxes, color and confidence`
-- [ ] **Task 7.4** — `feat(models): download models on build or start in mock mode if missing`
+- [x] **Task 7.3** — `feat(vision): add ONNX detector returning boxes, color and confidence`
+- [x] **Task 7.4** — `feat(models): download models on build or start in mock mode if missing`
+  `DETECTOR_URL` + `DETECTOR_SHA256` al construir la imagen; sin archivo el servicio sigue y `/ai/health` lo dice.
 
 ### Task 8 — Tracker
 
