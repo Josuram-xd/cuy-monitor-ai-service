@@ -9,6 +9,8 @@ dependencies = [
     "fastapi>=0.141,<0.142",
     "httpx>=0.28.1",
     "numpy>=2.5.3",
+    "onnxruntime>=1.26",
+    "opencv-python-headless>=5.0.0.93",
     "pydantic-settings>=2.11",
     "python-multipart>=0.0.32",
     "uvicorn>=0.35",
@@ -16,7 +18,6 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "opencv-python-headless>=5.0.0.93",
     "pytest>=8.3",
     "ruff>=0.14",
 ]
