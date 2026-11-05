@@ -1,0 +1,2 @@
+# Only for Google Colab (Tasks 7.2 and 10). Never installed in the service image.
+ultralytics>=8.4
