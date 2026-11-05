@@ -14,6 +14,7 @@ from app.contracts import (
 )
 from app.contracts.events import AudioLabel
 from app.messaging.backend_client import BackendEventClient
+from app.testdata.scenarios import Scenario
 
 Sleep = Callable[[float], Awaitable[None]]
 
@@ -55,6 +56,44 @@ def create_mock_events(
         ),
     )
     return behavior_event, audio_event
+
+
+def scenario_events(scenario: Scenario, window: int, cage_id: str) -> list[EventEnvelope]:
+    """The events of one window of a test scenario, ready for the backend."""
+    timestamp = datetime.now(UTC)
+
+    def envelope(event_type: EventType, payload) -> EventEnvelope:
+        return EventEnvelope(
+            event_id=uuid4(),
+            type=event_type,
+            cage_id=cage_id,
+            timestamp=timestamp,
+            source="ai-service",
+            schema_version=1,
+            payload=payload,
+        )
+
+    events = [envelope(EventType.BEHAVIOR, payload) for payload in scenario.behavior(window)]
+    audio = scenario.audio(window)
+    if audio is not None:
+        events.append(envelope(EventType.AUDIO, audio))
+    return events
+
+
+async def run_scenario_producer(
+    client: BackendEventClient,
+    settings: Settings,
+    scenario: Scenario,
+    sleep: Sleep = asyncio.sleep,
+) -> None:
+    """Mock mode with MOCK_SCENARIO: the same scenario in every cage, one window each period."""
+    window = 0
+    while True:
+        await sleep(settings.window_seconds)
+        for cage_id in settings.allowed_cages:
+            for event in scenario_events(scenario, window, cage_id):
+                await client.enqueue_event(event)
+        window += 1
 
 
 async def run_mock_producer(

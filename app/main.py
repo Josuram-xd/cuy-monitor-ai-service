@@ -9,9 +9,10 @@ from pydantic import BaseModel, Field
 from app.api.ingestion import router as ingestion_router
 from app.audio.throttle import CalmAudioThrottle
 from app.bedrock.runtime import BedrockRuntime
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.messaging.backend_client import BackendEventClient
-from app.mock.producer import run_mock_producer
+from app.mock.producer import run_mock_producer, run_scenario_producer
+from app.testdata.scenarios import build_scenario, parse_colors
 from app.vision.analysis import BedrockBehaviorAnalyzer
 from app.vision.pipeline import run_behavior_pipeline
 from app.vision.window import FrameWindows
@@ -29,7 +30,7 @@ async def lifespan(app: FastAPI):
     app.state.frame_windows = FrameWindows()
     app.state.calm_audio_throttle = CalmAudioThrottle(settings.window_seconds)
     if settings.mock_mode:
-        producer = asyncio.create_task(run_mock_producer(client, settings))
+        producer = asyncio.create_task(_mock_producer(client, settings))
     else:
         analyzer = BedrockBehaviorAnalyzer(
             BedrockRuntime(settings.aws_region), settings.bedrock_model_id, settings.window_seconds
@@ -54,6 +55,16 @@ async def lifespan(app: FastAPI):
         except asyncio.CancelledError:
             pass
         await client.close()
+
+
+def _mock_producer(client: BackendEventClient, settings: Settings):
+    if not settings.mock_scenario:
+        return run_mock_producer(client, settings)
+    scenario = build_scenario(
+        settings.mock_scenario, parse_colors(settings.mock_colors), settings.window_seconds
+    )
+    logger.info("Mock mode replaying the %s scenario: %s", scenario.name, scenario.description)
+    return run_scenario_producer(client, settings, scenario)
 
 
 class ModelStatus(BaseModel):
