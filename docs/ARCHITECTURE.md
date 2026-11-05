@@ -55,7 +55,9 @@ app/
 │   ├── events.py        Pydantic models — faithful copy of backend docs/contracts
 │   └── colors.py        MarkColor enum
 ├── vision/
+│   ├── classes.py       DETECTOR_CLASSES: one class per MarkColor, the same order for training and inference
 │   ├── detector.py      YOLO26n ONNX → boxes + class (one class per MarkColor) + confidence
+│   ├── model_store.py   loads models/detector.onnx; missing or broken → None, never fatal
 │   ├── tracker.py       Hungarian assignment (scipy.optimize.linear_sum_assignment) keeps IDs across frames
 │   └── zones.py         feeder / waterer polygons in image coordinates (per cage, from config)
 ├── behavior/
@@ -70,7 +72,9 @@ app/
 └── mock/
     └── producer.py        Contract-valid BEHAVIOR and AUDIO events per window
 models/                  .onnx / .joblib (not committed if heavy — GitHub Releases or Git LFS)
-training/                Colab notebooks and scripts (NOT in the Docker image)
+training/                Colab scripts (NOT in the Docker image): LABELING.md, synthetic_dataset.py,
+                         prepare_dataset.py, train_detector.py, dataset/ (labels only)
+scripts/fetch_models.py  downloads detector.onnx at build time (DETECTOR_URL + DETECTOR_SHA256)
 edge_agent/              runs on the farm laptop (NOT in the Docker image)
 dev/simulator.py         replays a recorded video as a live camera
 tests/
@@ -159,6 +163,11 @@ In mock mode, the upload endpoints validate the media type and return `202`; the
 
 - **TensorFlow is not a runtime dependency** (it doesn't support Python 3.14). It's only used inside Colab for the one-time YAMNet export. Plan B if export fails: Python 3.13 + TF 2.21 image.
 - Heavy model files are not committed; the Dockerfile downloads them from a GitHub Release (or they're mounted as a volume).
+  Detector: `docker build --build-arg DETECTOR_URL=<release asset> --build-arg DETECTOR_SHA256=<sha256>`; a wrong
+  checksum fails the build. `training/train_detector.py` writes `detector.json` with the classes, metrics and sha256.
+- The detector understands both ONNX layouts: YOLO26's end-to-end output `(1, N, 6)` and the raw `(1, 4 + classes, N)`
+  (with NMS). One detection per mark colour is kept (the most confident); under `DETECTOR_CONFIDENCE` nothing is
+  reported, so a colour is never guessed. Inference runs in a thread (`detect_async`).
 - If a model file is missing, the service starts in **mock mode** (random but contract-valid values) and `/ai/health` reports it.
 
 ## 7. edge_agent (farm laptop)
