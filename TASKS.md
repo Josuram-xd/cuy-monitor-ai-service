@@ -65,6 +65,8 @@
 ### Task 5 — Simulador
 
 - [x] **Task 5.1** — `feat(dev): add simulator that replays a video as a live camera`
+- [x] **Task 5.2** — `feat(testdata): add generated clips, behavior scenarios and recorded model answers`
+  Escenarios `healthy`, `lethargic`, `distress` y `recovery` (`MOCK_SCENARIO` o `dev/inject_test_data.py`) para probar la cadena de anomalías del backend y el historial de alertas; clips sintéticos para el clasificador de audio; respuestas grabadas del modelo de visión para el analizador sin AWS.
 
 ---
 
