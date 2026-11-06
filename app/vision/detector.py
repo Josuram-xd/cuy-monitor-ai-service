@@ -156,6 +156,14 @@ def parse_output(
     return found
 
 
+def _square_input_size(model_input: Any) -> int | None:
+    """640 for an input of shape (1, 3, 640, 640); None when the model has dynamic sizes."""
+    shape = list(getattr(model_input, "shape", None) or [])
+    if len(shape) == 4 and isinstance(shape[2], int) and shape[2] == shape[3]:
+        return shape[2]
+    return None
+
+
 class OnnxDetector:
     """YOLO26n exported to ONNX: one frame in, one Detection per mark colour out.
 
@@ -167,15 +175,17 @@ class OnnxDetector:
     def __init__(
         self,
         session: InferenceSession,
-        input_size: int = DEFAULT_INPUT_SIZE,
+        input_size: int | None = None,
         confidence: float = DEFAULT_CONFIDENCE,
         iou: float = DEFAULT_IOU,
     ):
         if not 0 < confidence < 1:
             raise ValueError("confidence must be between 0 and 1")
         self._session = session
-        self._input_name = session.get_inputs()[0].name
-        self._input_size = input_size
+        model_input = session.get_inputs()[0]
+        self._input_name = model_input.name
+        # the size the model was exported with (imgsz): sending another one fails on every frame
+        self._input_size = input_size or _square_input_size(model_input) or DEFAULT_INPUT_SIZE
         self._confidence = confidence
         self._iou = iou
 
