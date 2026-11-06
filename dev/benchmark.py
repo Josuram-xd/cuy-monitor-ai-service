@@ -20,6 +20,7 @@ import sys
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
+from itertools import cycle
 from pathlib import Path
 
 import cv2
@@ -75,8 +76,8 @@ def bench_detector(path: Path, frames: list[bytes], runs: int) -> dict:
     from app.vision.detector import OnnxDetector
 
     detector = OnnxDetector.load(path)
-    cycle = iter(frames * (runs // len(frames) + 3))
-    result = timed(lambda: detector.detect(next(cycle)), runs)
+    frames_forever = cycle(frames)
+    result = timed(lambda: detector.detect(next(frames_forever)), runs)
     result["fps"] = round(1000 / result["meanMs"], 1)
     return result
 
@@ -127,18 +128,20 @@ def bench_window(path: Path | None, detector_path: Path | None, frames: list[byt
 
 def bench_audio(yamnet: Path | None, model: Path | None, runs: int) -> dict:
     clips = [synthesize_clip(kind, seconds=1.0, seed=i) for i, kind in enumerate(ClipKind)]
-    cycle = iter(clips * (runs // len(clips) + 3))
-    result = {"signalRule": timed(lambda: classify_clip(next(cycle)), runs)}
+    clips_forever = cycle(clips)
+    result = {"signalRule": timed(lambda: classify_clip(next(clips_forever)), runs)}
     if yamnet:
         from app.audio.embeddings import YamnetEmbedder
 
         embedder = YamnetEmbedder.load(yamnet)
-        result["yamnetEmbedding"] = timed(lambda: embedder.embed(next(cycle)), runs)
+        result["yamnetEmbedding"] = timed(lambda: embedder.embed(next(clips_forever)), runs)
         if model:
             from app.audio.model import TrainedAudioClassifier
 
             classifier = TrainedAudioClassifier.load(embedder, model)
-            result["trainedClassifier"] = timed(lambda: classifier.classify(next(cycle)), runs)
+            result["trainedClassifier"] = timed(
+                lambda: classifier.classify(next(clips_forever)), runs
+            )
     return result
 
 

@@ -29,3 +29,21 @@ def test_timing_reports_the_percentiles():
 def test_peak_memory_is_in_megabytes_where_the_os_tells_it():
     memory = peak_memory_mb()
     assert memory is None or 1 < memory < 100_000
+
+
+def test_audio_timings_share_the_clips_without_running_out(monkeypatch):
+    import dev.benchmark as benchmark
+
+    class _Embedder:
+        @classmethod
+        def load(cls, path):
+            return cls()
+
+        def embed(self, clip):
+            return [0.0]
+
+    monkeypatch.setattr("app.audio.embeddings.YamnetEmbedder", _Embedder)
+
+    result = benchmark.bench_audio(yamnet=object(), model=None, runs=30)
+
+    assert set(result) == {"signalRule", "yamnetEmbedding"}
