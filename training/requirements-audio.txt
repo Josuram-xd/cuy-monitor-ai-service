@@ -4,3 +4,5 @@ tensorflow-hub>=0.16
 tf2onnx>=1.16
 onnxruntime>=1.20
 numpy
+# tensorflow-hub still imports pkg_resources, gone from setuptools 81
+setuptools<81
