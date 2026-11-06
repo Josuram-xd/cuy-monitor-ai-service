@@ -11,6 +11,8 @@ Scripts that run **outside** the service (Google Colab or a laptop). Not copied 
 | Publish the model | 7.2 | Upload `models/detector.onnx` and `detector.json` to a GitHub Release |
 | Use it | 7.3, 7.4 | Docker build with `DETECTOR_URL` and `DETECTOR_SHA256`, or mount it in `models/` |
 | Train the behavior classifier | 10.1 | `python -m training.train_behavior --synthetic 2000` (or `--data windows.csv`) |
+| Export YAMNet to ONNX | 11.1 | In Colab: `pip install -r training/requirements-audio.txt` and `python training/export_yamnet.py` |
+| Train the audio classifier | 11.3 | `python -m training.train_audio --data recordings/` (folders `normal/` and `distress/`) |
 | Publish it | 10.2 | Upload `behavior_rf.joblib` and `behavior_rf.json`; build with `BEHAVIOR_MODEL_URL` and `BEHAVIOR_MODEL_SHA256` |
 
 ## Colab
@@ -49,3 +51,17 @@ report with cross-validation metrics and the sha256 to pass as `BEHAVIOR_MODEL_S
   the `label` column (1/ANOMALY or 0/NORMAL) after checking the video, and run
   `python -m training.train_behavior --data behavior-windows.csv`.
 - joblib files are pickles: only use models you trained yourself and always build with the sha256.
+
+## Audio classifier (Task 11)
+
+1. **YAMNet to ONNX, once, in Colab** (TensorFlow does not run on Python 3.14):
+   `pip install -r training/requirements-audio.txt && python training/export_yamnet.py`. The script checks the
+   ONNX answers like TensorFlow (largest difference under 1e-3) and writes `yamnet.json` with the sha256.
+2. **Record the cage**: put WAVs in `recordings/normal/` (calm, eating, bedding, people talking near) and
+   `recordings/distress/` (squeals). Any rate, any length: they are cut into 0.96 s windows. Never commit them.
+3. **Train** (laptop or Colab, no TensorFlow): `python -m training.train_audio --data recordings/`. It compares an
+   SVM and a KNN with a stratified cross validation and keeps the one with the better F1 of `DISTRESS`.
+4. **Publish** `yamnet.onnx` and `audio_clf.joblib` (with their `.json`) in a GitHub Release and build with
+   `YAMNET_URL`, `YAMNET_SHA256`, `AUDIO_MODEL_URL` and `AUDIO_MODEL_SHA256`.
+
+`--synthetic N` uses the generated clips of `app/testdata/audio.py`: it proves the chain, not the model.

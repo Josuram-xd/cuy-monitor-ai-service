@@ -1,0 +1,8 @@
+# Only for Google Colab (Task 11.1): exporting YAMNet to ONNX. Never installed in the service image.
+tensorflow>=2.18
+tensorflow-hub>=0.16
+tf2onnx>=1.16
+onnxruntime>=1.20
+numpy
+# tensorflow-hub still imports pkg_resources, gone from setuptools 81
+setuptools<81

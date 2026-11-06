@@ -50,6 +50,11 @@ class Settings(BaseSettings):
     # retrain the classifier with them (training/train_behavior.py --data)
     behavior_log_path: Path | None = None
 
+    # the trained audio classifier (Task 11): YAMNet embeddings + SVM/KNN. Without both files the
+    # audio keeps the signal rule of app/audio/classifier.py
+    yamnet_path: Path = Path("models/yamnet.onnx")
+    audio_model_path: Path = Path("models/audio_clf.joblib")
+
     @field_validator("cage_zones")
     @classmethod
     def zones_are_valid(cls, value: str) -> str:
