@@ -1,8 +1,10 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from app.vision.zones import NO_ZONES, CageZones, parse_cage_zones
 
 
 class Settings(BaseSettings):
@@ -38,6 +40,29 @@ class Settings(BaseSettings):
     # the trained detector (Task 7). Missing file = no detector, never an error: see /ai/health
     detector_path: Path = Path("models/detector.onnx")
     detector_confidence: float = Field(default=0.35, gt=0, lt=1)
+
+    # the behavior classifier (Task 10). With it and the detector, the frames go through the
+    # trained chain (detector -> tracker -> 60 s window -> Random Forest) instead of Bedrock.
+    behavior_model_path: Path = Path("models/behavior_rf.joblib")
+    # feeder and waterer polygons per cage, in fractions of the frame (see app/vision/zones.py)
+    cage_zones: str = ""
+    # optional: append the features of every window to this CSV, to label real windows later and
+    # retrain the classifier with them (training/train_behavior.py --data)
+    behavior_log_path: Path | None = None
+
+    @field_validator("cage_zones")
+    @classmethod
+    def zones_are_valid(cls, value: str) -> str:
+        parse_cage_zones(value)  # a typo in the zones fails at start, not in the middle of a window
+        return value
+
+    @field_validator("behavior_log_path", mode="before")
+    @classmethod
+    def empty_log_path_is_none(cls, value: object) -> object:
+        return None if isinstance(value, str) and not value.strip() else value
+
+    def zones_for(self, cage_id: str) -> CageZones:
+        return parse_cage_zones(self.cage_zones).get(cage_id, NO_ZONES)
 
     @property
     def allowed_cages(self) -> list[str]:
