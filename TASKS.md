@@ -110,10 +110,10 @@
 
 ### Task 11 — Audio
 
-- [ ] **Task 11.1** — `feat(training): add YAMNet to ONNX export script`
-- [ ] **Task 11.2** — `feat(audio): add YAMNet ONNX embeddings`
-- [ ] **Task 11.3** — `feat(training): add SVM/KNN audio training script`
-- [ ] **Task 11.4** — `feat(audio): classify clips and send real AUDIO events`
+- [x] **Task 11.1** — `feat(training): add YAMNet to ONNX export script`
+- [x] **Task 11.2** — `feat(audio): add YAMNet ONNX embeddings`
+- [x] **Task 11.3** — `feat(training): add SVM/KNN audio training script`
+- [x] **Task 11.4** — `feat(audio): classify clips and send real AUDIO events`
 
 ### Task 12 — edge_agent (laptop)
 
