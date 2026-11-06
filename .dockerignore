@@ -12,3 +12,5 @@ docs
 *.md
 training
 models
+**/.env
+**/.env.*
