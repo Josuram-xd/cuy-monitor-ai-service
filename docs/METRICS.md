@@ -16,10 +16,15 @@ python -m dev.benchmark --detector models/detector.onnx --behavior-model models/
 
 | Machine | Detector p50 / fps | 60 s behavior window | YAMNet per 1 s clip | Peak memory | Date |
 |---|---|---|---|---|---|
+| Dev laptop, i7-7500U (4 threads), models of the synthetic data, detector imgsz 320 | 16.1 ms / 61 fps (p95 19.4 ms) | 23.6 ms | 3.4 ms (classifier 6.7 ms) | 211 MB | 2026-11-06 |
 | EC2 `c7i-flex.large` | _pending_ | _pending_ | _pending_ | _pending_ | |
 | Farm laptop (Celeron) | _pending_ | _pending_ | _pending_ | _pending_ | |
 
 At 2 fps a frame arrives every 500 ms: the detector p95 has to stay well under that on the machine that runs it.
+
+The dev laptop row only shows the order of magnitude: its detector was trained on synthetic frames at 320 px
+(a 640 px model does about 4x the work) and nothing else ran at the same time. The rows that decide ADR-005 are
+the EC2 and the farm laptop, with the models trained on the cage.
 
 ## 2. Quality per model
 
