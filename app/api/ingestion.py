@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import UTC, datetime
 from typing import Annotated, Literal
@@ -95,8 +96,13 @@ async def submit_audio(
         return AcceptedResponse()
     _require_known_cage(cage_id, settings)
     clip = await _read_limited(file, MAX_AUDIO_BYTES)
+    trained = getattr(request.app.state, "audio_classifier", None)
     try:
-        result = classify_clip(clip)
+        if trained is not None:
+            # YAMNet + SVM/KNN in a thread: inference never runs on the event loop
+            result = await asyncio.to_thread(trained.classify, clip)
+        else:
+            result = classify_clip(clip)
     except UnsupportedAudio as exception:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exception)) from None
 
