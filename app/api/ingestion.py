@@ -3,7 +3,17 @@ from datetime import UTC, datetime
 from typing import Annotated, Literal
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    UploadFile,
+    status,
+)
 from pydantic import BaseModel, Field
 
 from app.audio.classifier import UnsupportedAudio, classify_clip
@@ -51,6 +61,7 @@ async def _read_limited(file: UploadFile, limit: int) -> bytes:
 @router.post("/frames", status_code=status.HTTP_202_ACCEPTED, response_model=AcceptedResponse)
 async def submit_frame(
     request: Request,
+    background_tasks: BackgroundTasks,
     file: Annotated[UploadFile, File()],
     captured_at: Annotated[datetime, Form(alias="capturedAt")],
     cage_id: Annotated[str, Form(alias="cageId", min_length=1, max_length=50)],
@@ -61,8 +72,13 @@ async def submit_frame(
         return AcceptedResponse()
     _require_known_cage(cage_id, settings)
     frame = await _read_limited(file, MAX_FRAME_BYTES)
-    # the analysis happens once per window, over the frames gathered by then
-    request.app.state.frame_windows.for_cage(cage_id).add(frame)
+    engine = getattr(request.app.state, "behavior_engine", None)
+    if engine is not None:
+        # trained chain: the frame is detected and tracked right after the 202 is sent
+        background_tasks.add_task(engine.submit_frame, cage_id, frame, captured_at)
+    else:
+        # Bedrock: the analysis happens once per window, over the frames gathered by then
+        request.app.state.frame_windows.for_cage(cage_id).add(frame)
     return AcceptedResponse(mock_mode=False)
 
 

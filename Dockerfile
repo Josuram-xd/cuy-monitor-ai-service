@@ -6,11 +6,15 @@ ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 # dependencies first: this layer is cached until pyproject.toml or uv.lock change
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
-# the trained detector from a GitHub Release (Task 7.4); without DETECTOR_URL the image has none
+# the trained models from a GitHub Release (Tasks 7.4 and 10.2); without a URL the image has none
 ARG DETECTOR_URL=""
 ARG DETECTOR_SHA256=""
+ARG BEHAVIOR_MODEL_URL=""
+ARG BEHAVIOR_MODEL_SHA256=""
 COPY scripts/fetch_models.py ./scripts/
-RUN DETECTOR_URL="$DETECTOR_URL" DETECTOR_SHA256="$DETECTOR_SHA256" python scripts/fetch_models.py
+RUN DETECTOR_URL="$DETECTOR_URL" DETECTOR_SHA256="$DETECTOR_SHA256" \
+    BEHAVIOR_MODEL_URL="$BEHAVIOR_MODEL_URL" BEHAVIOR_MODEL_SHA256="$BEHAVIOR_MODEL_SHA256" \
+    python scripts/fetch_models.py
 
 FROM python:3.14-slim
 WORKDIR /app

@@ -40,6 +40,13 @@ impossible items and never lets a Bedrock failure produce made-up events. The ev
 backend do not change, so the trained models can replace this engine later without touching either.
 On the EC2 the Bedrock credentials come from the instance role. Cost is about one call per minute.
 
+**Trained chain (Tasks 8–10).** When both `models/detector.onnx` and `models/behavior_rf.joblib`
+load, `/ai/frames` stops buffering frames for Bedrock and uses the trained chain instead
+(`app/behavior/engine.py`): each frame is detected in a thread, the `HungarianTracker` keeps who is
+who, the sample goes into the cage's 60 s `BehaviorWindow`, and when the window closes
+`compute_features` + the Random Forest give one `BEHAVIOR` payload per guinea pig. With only one of
+the two models (or none) the service stays on Bedrock. The payload is identical either way.
+
 ---
 
 ## 2. Components
@@ -61,9 +68,10 @@ app/
 │   ├── tracker.py       Hungarian assignment (scipy.optimize.linear_sum_assignment) keeps IDs across frames
 │   └── zones.py         feeder / waterer polygons in image coordinates (per cage, from config)
 ├── behavior/
-│   ├── window.py        60 s sliding window per guinea pig
-│   ├── features.py      stillSeconds, feederVisits, watererVisits, avgGroupDistance
-│   └── classifier.py    Random Forest (.joblib) → probAnomaly
+│   ├── window.py        60 s window per cage of tracked samples (bounded)
+│   ├── features.py      stillSeconds, feederVisits, watererVisits, avgGroupDistance; FEATURE_NAMES
+│   ├── classifier.py    Random Forest bundle (.joblib) → probAnomaly; missing → None, never fatal
+│   └── engine.py        detector → tracker → window → classifier, per cage
 ├── audio/
 │   ├── embeddings.py    YAMNet converted to ONNX → 1024-d embeddings
 │   └── classifier.py    SVM/KNN over embeddings → NORMAL | DISTRESS + probability
@@ -189,6 +197,9 @@ In mock mode, the upload endpoints validate the media type and return `202`; the
 | `WINDOW_SECONDS` | `60` | |
 | `MIN_DETECTION_CONFIDENCE` | `0.5` | |
 | `MOCK_MODE` | `false` | Force fake events |
+| `BEHAVIOR_MODEL_PATH` | `models/behavior_rf.joblib` | With the detector, enables the trained chain |
+| `CAGE_ZONES` | empty | JSON: feeder/waterer polygons per cage in fractions of the frame (`app/vision/zones.py`) |
+| `BEHAVIOR_LOG_PATH` | empty | CSV with the features of every window, to label and retrain |
 
 ## 9. Deployment
 
