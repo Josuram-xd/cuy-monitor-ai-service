@@ -1,4 +1,4 @@
-"""Downloads the trained models at image build time (Tasks 7.4 and 10.2).
+"""Downloads the trained models at image build time (Tasks 7.4, 10.2 and 11).
 
 Without DETECTOR_URL / BEHAVIOR_MODEL_URL that model is skipped and the service starts without it
 (/ai/health says so). With it, the file is checked against its sha256 before it is kept: a wrong
@@ -35,6 +35,14 @@ MODELS = (
         "BEHAVIOR_MODEL_PATH",
         "models/behavior_rf.joblib",
         "behavior classifier",
+    ),
+    ("YAMNET_URL", "YAMNET_SHA256", "YAMNET_PATH", "models/yamnet.onnx", "YAMNet model"),
+    (
+        "AUDIO_MODEL_URL",
+        "AUDIO_MODEL_SHA256",
+        "AUDIO_MODEL_PATH",
+        "models/audio_clf.joblib",
+        "audio classifier",
     ),
 )
 

@@ -33,7 +33,7 @@ YAMNet). That needs labelled data and training that do not exist yet. The servic
 | Input | Engine | Output |
 |---|---|---|
 | Frames (`/ai/frames`) | A Bedrock vision model (default Amazon Nova 2 Lite) over up to 6 frames per 60 s window | one `BEHAVIOR` per guinea pig seen (`app/vision/`) |
-| Audio (`/ai/audio`) | Signal rule: loudness x energy above 2 kHz (`app/audio/classifier.py`) | `AUDIO` `DISTRESS` / `NORMAL` |
+| Audio (`/ai/audio`) | Signal rule: loudness x energy above 2 kHz (`app/audio/classifier.py`); with `yamnet.onnx` + `audio_clf.joblib`, YAMNet embeddings + SVM/KNN (`app/audio/model.py`, Task 11) | `AUDIO` `DISTRESS` / `NORMAL` |
 
 The model's answer is untrusted input: `app/vision/analysis.py` validates every field, drops
 impossible items and never lets a Bedrock failure produce made-up events. The event contract and the
@@ -73,8 +73,10 @@ app/
 │   ├── classifier.py    Random Forest bundle (.joblib) → probAnomaly; missing → None, never fatal
 │   └── engine.py        detector → tracker → window → classifier, per cage
 ├── audio/
-│   ├── embeddings.py    YAMNet converted to ONNX → 1024-d embeddings
-│   └── classifier.py    SVM/KNN over embeddings → NORMAL | DISTRESS + probability
+│   ├── wav.py           reads 16-bit WAV (any rate, mono/stereo) and resamples to 16 kHz
+│   ├── classifier.py    signal rule (loudness x shrillness), used while there is no trained model
+│   ├── embeddings.py    YAMNet converted to ONNX → mean of its 1024-d embeddings
+│   └── model.py         SVM/KNN bundle over the embeddings → NORMAL | DISTRESS + probability
 ├── messaging/
 │   └── backend_client.py  httpx client, retry with backoff and bounded event buffer
 └── mock/
@@ -203,6 +205,7 @@ In mock mode, the upload endpoints validate the media type and return `202`; the
 | `BEHAVIOR_MODEL_PATH` | `models/behavior_rf.joblib` | With the detector, enables the trained chain |
 | `CAGE_ZONES` | empty | JSON: feeder/waterer polygons per cage in fractions of the frame (`app/vision/zones.py`) |
 | `BEHAVIOR_LOG_PATH` | empty | CSV with the features of every window, to label and retrain |
+| `YAMNET_PATH`, `AUDIO_MODEL_PATH` | `models/yamnet.onnx`, `models/audio_clf.joblib` | With both, audio uses YAMNet + SVM/KNN instead of the signal rule |
 
 ## 9. Deployment
 
