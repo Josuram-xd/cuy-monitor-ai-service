@@ -9,13 +9,15 @@ from pydantic import BaseModel, Field
 from app.api.ingestion import router as ingestion_router
 from app.audio.throttle import CalmAudioThrottle
 from app.bedrock.runtime import BedrockRuntime
+from app.behavior.classifier import load_behavior_classifier
+from app.behavior.engine import TrainedBehaviorEngine
 from app.config import Settings, get_settings
 from app.messaging.backend_client import BackendEventClient
 from app.mock.producer import run_mock_producer, run_scenario_producer
 from app.testdata.scenarios import build_scenario, parse_colors
 from app.vision.analysis import BedrockBehaviorAnalyzer
 from app.vision.model_store import load_detector
-from app.vision.pipeline import run_behavior_pipeline
+from app.vision.pipeline import run_behavior_pipeline, run_trained_behavior_pipeline
 from app.vision.window import FrameWindows
 
 logger = logging.getLogger(__name__)
@@ -27,13 +29,29 @@ async def lifespan(app: FastAPI):
     client = BackendEventClient(settings)
     app.state.backend_event_client = client
     worker = asyncio.create_task(client.run())
-    # mock mode: fake events. Real mode: Amazon Bedrock looks at the frames gathered each window.
+    # mock mode: fake events. Real mode: the trained chain when both models loaded, otherwise
+    # Amazon Bedrock looks at the frames gathered each window.
     app.state.frame_windows = FrameWindows()
     app.state.calm_audio_throttle = CalmAudioThrottle(settings.window_seconds)
     app.state.detector = load_detector(settings.detector_path, settings.detector_confidence)
+    app.state.behavior_classifier = load_behavior_classifier(settings.behavior_model_path)
+    app.state.behavior_engine = None
     if settings.mock_mode:
         producer = asyncio.create_task(_mock_producer(client, settings))
+    elif app.state.detector is not None and app.state.behavior_classifier is not None:
+        # both trained models are there: they replace Bedrock for the frames (audio is the same)
+        engine = TrainedBehaviorEngine(
+            app.state.detector,
+            app.state.behavior_classifier,
+            settings.zones_for,
+            settings.window_seconds,
+            settings.behavior_log_path,
+        )
+        app.state.behavior_engine = engine
+        logger.info("Behavior engine: trained detector + tracker + Random Forest")
+        producer = asyncio.create_task(run_trained_behavior_pipeline(client, engine, settings))
     else:
+        logger.info("Behavior engine: Amazon Bedrock (%s)", settings.bedrock_model_id)
         analyzer = BedrockBehaviorAnalyzer(
             BedrockRuntime(settings.aws_region), settings.bedrock_model_id, settings.window_seconds
         )
@@ -92,7 +110,10 @@ def health(request: Request) -> HealthResponse:
     # there when the trained detector.onnx was loaded, in any mode.
     real = not settings.mock_mode
     onnx_detector = getattr(request.app.state, "detector", None) is not None
+    trained_behavior = getattr(request.app.state, "behavior_classifier", None) is not None
     return HealthResponse(
-        models=ModelStatus(detector=real or onnx_detector, behavior=real, audio=real),
+        models=ModelStatus(
+            detector=real or onnx_detector, behavior=real or trained_behavior, audio=real
+        ),
         mock_mode=settings.mock_mode,
     )
