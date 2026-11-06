@@ -1,0 +1,23 @@
+# systemd unit for the edge agent on a Linux laptop (see edge_agent/README.md)
+# Install: sudo cp edge_agent/cuy-edge-agent.service /etc/systemd/system/
+#          sudo systemctl daemon-reload && sudo systemctl enable --now cuy-edge-agent
+[Unit]
+Description=Cuy Monitor edge agent (A12 camera and microphone to the AI service)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=cuymonitor
+WorkingDirectory=/opt/cuy-monitor-ai-service
+ExecStart=/opt/cuy-monitor-ai-service/.venv-edge/bin/python -m edge_agent
+# internet or the phone can drop at any time: always come back
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
