@@ -1,24 +1,79 @@
 # Cuy Monitor AI Service
 
-Python 3.14 service for processing cage camera and audio input. See
-[`docs/PRD.md`](docs/PRD.md) for requirements, [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
-for component boundaries, and [`TASKS.md`](TASKS.md) for implementation status.
+Python 3.14 + FastAPI service that watches and listens to the cage: it recognises each guinea pig by its
+coloured mark, measures how it behaves in 60 s windows, classifies the cage audio and sends `BEHAVIOR` and
+`AUDIO` events to the backend, which decides the health state. It also holds the **edge agent** that runs on
+the farm laptop and the **training scripts** (Colab or a laptop).
 
-## Development
+See [`docs/PRD.md`](docs/PRD.md) for requirements, [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the
+components and [`TASKS.md`](TASKS.md) for the status.
 
-Install [uv](https://docs.astral.sh/uv/), then run:
+```
+A12 phone ─LAN─► edge_agent (laptop) ─HTTPS─► /ai/frames, /ai/audio ─► this service ─HTTP─► backend
+                                                 │
+            mock events │ Amazon Bedrock │ trained models (detector, tracker, Random Forest, YAMNet)
+```
 
-Copy `.env.example` to `.env` and replace `API_KEY` with a local secret.
+## Engines
+
+The engine is chosen at start-up from `MOCK_MODE` and the model files that loaded; `/ai/health` says which
+models are in use. A missing or broken model is never fatal: the service falls back to the next engine.
+
+| Input | `MOCK_MODE=true` | Real mode, without trained models | Real mode, with trained models |
+|---|---|---|---|
+| Frames | contract-valid fake events (or a scenario) | Amazon Bedrock (Nova 2 Lite) over up to 6 frames per window | `detector.onnx` → Hungarian tracker → 60 s window → `behavior_rf.joblib` |
+| Audio | fake events | signal rule: loud × shrill | `yamnet.onnx` embeddings → `audio_clf.joblib` (SVM or KNN) |
+
+## Models
+
+None is committed: they go in a GitHub Release and the image downloads them at build time, checked against
+their sha256 (`docker build --build-arg <NAME>_URL=... --build-arg <NAME>_SHA256=...`).
+
+| Model | File | Trained with | Build args | State |
+|---|---|---|---|---|
+| Detector YOLO26n (one class per mark colour) | `models/detector.onnx` | `training/train_detector.py` (Colab GPU) | `DETECTOR_URL`, `DETECTOR_SHA256` | Chain proven on synthetic frames; needs the labelled cage frames (Tasks 6.1, 6.3, 7.2) |
+| Behavior Random Forest | `models/behavior_rf.joblib` | `training/train_behavior.py` | `BEHAVIOR_MODEL_URL`, `BEHAVIOR_MODEL_SHA256` | Synthetic windows only; retrain with `BEHAVIOR_LOG_PATH` windows labelled by hand |
+| YAMNet embeddings | `models/yamnet.onnx` | `training/export_yamnet.py` (TensorFlow, Python ≤ 3.13) | `YAMNET_URL`, `YAMNET_SHA256` | Exported and checked against TensorFlow (max difference 5.9e-6) |
+| Audio SVM / KNN | `models/audio_clf.joblib` | `training/train_audio.py` | `AUDIO_MODEL_URL`, `AUDIO_MODEL_SHA256` | Needs recordings of the cage in `normal/` and `distress/` |
+
+Step by step: [`training/README.md`](training/README.md). joblib files are pickles: only use models you
+trained yourself and always build with their sha256.
+
+## Setup
+
+Install [uv](https://docs.astral.sh/uv/), copy `.env.example` to `.env` and set `API_KEY`, then:
 
 ```bash
 uv sync
-uv run pytest
-uv run ruff check .
+uv run uvicorn app.main:app --reload --port 8000   # http://localhost:8000/ai/health
+uv run pytest --cov                                # fails under 95 % coverage (Task 14.1)
+uv run ruff check . && uv run ruff format .
+docker build -t cuy-monitor-ai-service:local .
 ```
 
-The service exposes authenticated `POST /ai/frames` and `POST /ai/audio` multipart routes.
-In mock mode they accept supported media and a background producer sends contract-valid
-`BEHAVIOR` and `AUDIO` events to the backend once per configured window.
+| Variable | Default | What it does |
+|---|---|---|
+| `API_KEY` | — | Required. The same key as the backend; `/ai/frames` and `/ai/audio` ask for it |
+| `BACKEND_URL` | `http://backend:8080` | Where the events go |
+| `CAGE_ID` / `CAGE_IDS` | `cage-1` / empty | The cages this service accepts |
+| `MOCK_MODE` | `true` | Fake events instead of analysing what arrives |
+| `CAGE_ZONES` | empty | Feeder and waterer polygons per cage (JSON, fractions of the frame) |
+| `BEHAVIOR_LOG_PATH` | empty | CSV with the features of every window, to label and retrain |
+| `*_PATH` | `models/...` | Where each model file is read from |
+
+The full list is in [`.env.example`](.env.example) and `docs/ARCHITECTURE.md` section 8.
+
+## Edge agent (farm laptop)
+
+`python -m edge_agent` reads the A12 (IP Webcam) and sends 1–2 fps frames and 1 s clips, with retries and no
+unbounded queue. Install guide for Windows and Linux: [`edge_agent/README.md`](edge_agent/README.md).
+
+## Metrics
+
+`python -m dev.benchmark` times every model loaded on the machine it runs on (detector per frame, a 60 s
+behavior window, YAMNet per clip) and its memory. The numbers of the EC2 and of the laptop go in
+[`docs/METRICS.md`](docs/METRICS.md) (Task 13); the accuracy of each model comes from the `.json` report its
+training script writes.
 
 ## Test data to try the models
 
@@ -58,8 +113,8 @@ With `MOCK_MODE=false` the service stops inventing events and looks at what it r
   guinea pig whose mark colour it can identify, how many frames it was still, at the feeder or the
   water bottle, how far from the others and how unusual it looks. Each one becomes a `BEHAVIOR`
   event of the backend contract (one per guinea pig per window).
-- `POST /ai/audio` (16-bit WAV) is classified with a signal rule (loud and shrill = `DISTRESS`)
-  and sent as an `AUDIO` event. Calm clips are reported once per window.
+- `POST /ai/audio` (16-bit WAV) is classified with a signal rule (loud and shrill = `DISTRESS`),
+  or with YAMNet + SVM/KNN when those models are loaded, and sent as an `AUDIO` event. Calm clips are reported once per window.
 - Whatever the model returns is validated before it is used: invalid or impossible items are
   dropped, and if Bedrock fails the window is skipped (no invented data).
 
