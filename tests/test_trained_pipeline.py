@@ -236,6 +236,9 @@ def trained_app(monkeypatch, tmp_path):
     monkeypatch.setenv("BEHAVIOR_MODEL_PATH", str(model))
     detector = _ScriptedDetector([[Detection(MarkColor.RED, 0.9, _box(50, 50))]])
     monkeypatch.setattr(main_module, "load_detector", lambda *_: detector)
+    # the app object outlives this test: what its startup stores must not leak into the next ones
+    for name in ("detector", "behavior_classifier", "behavior_engine"):
+        monkeypatch.setattr(main_module.app.state, name, None, raising=False)
     get_settings.cache_clear()
     with TestClient(main_module.app) as test_client:
         main_module.app.state.backend_event_client = _Client()

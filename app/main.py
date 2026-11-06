@@ -7,6 +7,7 @@ from fastapi import FastAPI, Request
 from pydantic import BaseModel, Field
 
 from app.api.ingestion import router as ingestion_router
+from app.audio.model import load_audio_classifier
 from app.audio.throttle import CalmAudioThrottle
 from app.bedrock.runtime import BedrockRuntime
 from app.behavior.classifier import load_behavior_classifier
@@ -35,6 +36,9 @@ async def lifespan(app: FastAPI):
     app.state.calm_audio_throttle = CalmAudioThrottle(settings.window_seconds)
     app.state.detector = load_detector(settings.detector_path, settings.detector_confidence)
     app.state.behavior_classifier = load_behavior_classifier(settings.behavior_model_path)
+    app.state.audio_classifier = load_audio_classifier(
+        settings.yamnet_path, settings.audio_model_path
+    )
     app.state.behavior_engine = None
     if settings.mock_mode:
         producer = asyncio.create_task(_mock_producer(client, settings))
@@ -111,9 +115,12 @@ def health(request: Request) -> HealthResponse:
     real = not settings.mock_mode
     onnx_detector = getattr(request.app.state, "detector", None) is not None
     trained_behavior = getattr(request.app.state, "behavior_classifier", None) is not None
+    trained_audio = getattr(request.app.state, "audio_classifier", None) is not None
     return HealthResponse(
         models=ModelStatus(
-            detector=real or onnx_detector, behavior=real or trained_behavior, audio=real
+            detector=real or onnx_detector,
+            behavior=real or trained_behavior,
+            audio=real or trained_audio,
         ),
         mock_mode=settings.mock_mode,
     )
