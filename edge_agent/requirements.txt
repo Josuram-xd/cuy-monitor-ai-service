@@ -1,0 +1,3 @@
+# The edge agent only. Install on the farm laptop: pip install -r edge_agent/requirements.txt
+httpx>=0.28.1
+pydantic-settings>=2.11

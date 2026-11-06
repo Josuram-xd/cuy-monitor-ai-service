@@ -117,11 +117,11 @@
 
 ### Task 12 — edge_agent (laptop)
 
-- [ ] **Task 12.1** — `feat(edge): read frames from the A12 IP Webcam stream`
-- [ ] **Task 12.2** — `feat(edge): send 1–2 fps frames with retries`
-- [ ] **Task 12.3** — `feat(edge): record and send 1 s audio clips`
-- [ ] **Task 12.4** — `docs(edge): add service install guide for Windows and Linux`
-- [ ] **Task 12.5** — `build(edge): add optional Dockerfile for the edge agent on Linux` *(opcional)*
+- [x] **Task 12.1** — `feat(edge): read frames from the A12 IP Webcam stream`
+- [x] **Task 12.2** — `feat(edge): send 1–2 fps frames with retries`
+- [x] **Task 12.3** — `feat(edge): record and send 1 s audio clips`
+- [x] **Task 12.4** — `docs(edge): add service install guide for Windows and Linux`
+- [x] **Task 12.5** — `build(edge): add optional Dockerfile for the edge agent on Linux` *(opcional)*
   Solo para una laptop con Linux; en Windows se instala como servicio nativo (Task 12.4).
 
 ---
