@@ -92,21 +92,21 @@
 
 ### Task 8 — Tracker
 
-- [ ] **Task 8.1** — `feat(vision): add Hungarian tracker keeping identity per color`
-- [ ] **Task 8.2** — `test(vision): cover tracker identity with synthetic boxes`
+- [x] **Task 8.1** — `feat(vision): add Hungarian tracker keeping identity per color`
+- [x] **Task 8.2** — `test(vision): cover tracker identity with synthetic boxes`
 
 ### Task 9 — Comportamiento
 
-- [ ] **Task 9.1** — `feat(vision): add feeder and waterer zones from config`
-- [ ] **Task 9.2** — `feat(behavior): add 60 s window per guinea pig`
-- [ ] **Task 9.3** — `feat(behavior): compute still seconds, visits and group distance`
-- [ ] **Task 9.4** — `test(behavior): cover features with synthetic tracks`
+- [x] **Task 9.1** — `feat(vision): add feeder and waterer zones from config`
+- [x] **Task 9.2** — `feat(behavior): add 60 s window per guinea pig`
+- [x] **Task 9.3** — `feat(behavior): compute still seconds, visits and group distance`
+- [x] **Task 9.4** — `test(behavior): cover features with synthetic tracks`
 
 ### Task 10 — Clasificador de comportamiento
 
-- [ ] **Task 10.1** — `feat(training): add Random Forest training script`
-- [ ] **Task 10.2** — `feat(behavior): load classifier and compute probAnomaly`
-- [ ] **Task 10.3** — `feat(api): send real BEHAVIOR events from the frame pipeline`
+- [x] **Task 10.1** — `feat(training): add Random Forest training script`
+- [x] **Task 10.2** — `feat(behavior): load classifier and compute probAnomaly`
+- [x] **Task 10.3** — `feat(api): send real BEHAVIOR events from the frame pipeline`
 
 ### Task 11 — Audio
 
