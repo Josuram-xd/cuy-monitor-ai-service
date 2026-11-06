@@ -38,27 +38,42 @@ def test_signal(seconds: float = 2.0, rate: int = 16_000) -> np.ndarray:
 
 
 def export(out: Path) -> dict:
+    import onnx
     import onnxruntime
     import tensorflow as tf
     import tensorflow_hub as hub
     import tf2onnx
-
-    model = hub.load(YAMNET_HANDLE)
-    signature = [tf.TensorSpec(shape=[None], dtype=tf.float32, name="waveform")]
-
-    @tf.function(input_signature=signature)
-    def embeddings(waveform):
-        _, frames, _ = model(waveform)
-        return {"embeddings": frames}
-
-    out.parent.mkdir(parents=True, exist_ok=True)
-    tf2onnx.convert.from_function(
-        embeddings, input_signature=signature, opset=OPSET, output_path=str(out)
+    from tensorflow.python.framework.convert_to_constants import (
+        convert_variables_to_constants_v2,
     )
 
+    model = hub.load(YAMNET_HANDLE)
+
+    @tf.function(input_signature=[tf.TensorSpec(shape=[None], dtype=tf.float32, name="waveform")])
+    def embeddings(waveform):
+        _, frames, _ = model(waveform)
+        return frames
+
+    # the weights of a TF Hub model are variables: freeze them into constants, or the ONNX graph
+    # asks for every weight as one more input
+    frozen = convert_variables_to_constants_v2(embeddings.get_concrete_function())
+    out.parent.mkdir(parents=True, exist_ok=True)
+    converted, _ = tf2onnx.convert.from_graph_def(
+        frozen.graph.as_graph_def(),
+        input_names=[tensor.name for tensor in frozen.inputs],
+        output_names=[tensor.name for tensor in frozen.outputs],
+        opset=OPSET,
+    )
+    _rename(converted, converted.graph.input[0].name, "waveform")
+    _rename(converted, converted.graph.output[0].name, "embeddings")
+    onnx.checker.check_model(converted)
+    onnx.save(converted, str(out))
+
     signal = test_signal()
-    expected = embeddings(tf.constant(signal))["embeddings"].numpy()
+    expected = embeddings(tf.constant(signal)).numpy()
     session = onnxruntime.InferenceSession(str(out), providers=["CPUExecutionProvider"])
+    if [i.name for i in session.get_inputs()] != ["waveform"]:
+        raise ValueError(f"The ONNX model wants inputs {[i.name for i in session.get_inputs()]}")
     actual = session.run(["embeddings"], {"waveform": signal})[0]
     if actual.shape != expected.shape or actual.shape[1] != 1024:
         raise ValueError(f"ONNX gives {actual.shape}, TensorFlow {expected.shape}")
@@ -77,6 +92,16 @@ def export(out: Path) -> dict:
     }
     out.with_suffix(".json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     return report
+
+
+def _rename(model, old: str, new: str) -> None:
+    """Gives a graph input or output a stable name ("waveform:0" -> "waveform")."""
+    for value in [*model.graph.input, *model.graph.output]:
+        if value.name == old:
+            value.name = new
+    for node in model.graph.node:
+        node.input[:] = [new if name == old else name for name in node.input]
+        node.output[:] = [new if name == old else name for name in node.output]
 
 
 def main(argv: list[str] | None = None) -> int:
