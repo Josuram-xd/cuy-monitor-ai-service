@@ -137,5 +137,5 @@
 
 ### Task 14 — Entrega
 
-- [ ] **Task 14.1** — `test: raise coverage of pipeline modules`
-- [ ] **Task 14.2** — `docs: update README with models, metrics and setup`
+- [x] **Task 14.1** — `test: raise coverage of pipeline modules`
+- [x] **Task 14.2** — `docs: update README with models, metrics and setup`
