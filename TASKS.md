@@ -50,8 +50,10 @@
 🔗 **Depende de:** `cuy-monitor-backend` Task 2.5 (compose con el perfil `ai`)
 
 - [x] **Task 4.1** — `build: add Dockerfile on python:3.14-slim`
-- [ ] **Task 4.2** — *(sin commit)* clonar el repo al lado del backend en la EC2 y levantar con `docker compose --profile ai up -d --build`
-- [ ] **Task 4.3** — *(sin commit)* verificar `https://cuymonitor.duckdns.org/ai/health` y los eventos en el log del backend
+- [x] **Task 4.2** — *(sin commit)* clonar el repo al lado del backend en la EC2 y levantar con `docker compose --profile ai up -d --build`
+  Desplegado el 2026-11-06 con `infra/deploy.sh` del backend (perfil `ai`), junto al backend en la EC2.
+- [x] **Task 4.3** — *(sin commit)* verificar `https://cuymonitor.duckdns.org/ai/health` y los eventos en el log del backend
+  `https://cuymonitor.duckdns.org/ai/health` responde `UP` en modo real (Bedrock).
   Desde octubre la base está en RDS (`cuy-monitor-backend` Task 22): no cambia nada para este servicio, pero los eventos ahora se guardan allá.
 
 ### Task 4b — Análisis con Amazon Bedrock (en lugar de modelos entrenados, para la demo)
@@ -137,5 +139,5 @@
 
 ### Task 14 — Entrega
 
-- [ ] **Task 14.1** — `test: raise coverage of pipeline modules`
-- [ ] **Task 14.2** — `docs: update README with models, metrics and setup`
+- [x] **Task 14.1** — `test: raise coverage of pipeline modules`
+- [x] **Task 14.2** — `docs: update README with models, metrics and setup`

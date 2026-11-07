@@ -53,7 +53,7 @@ def main() -> int:
         target = Path(os.getenv(path_var, default_path))
         target.parent.mkdir(parents=True, exist_ok=True)
         if not url:
-            print(f"No {url_var}: the image is built without a {name}")
+            print(f"No {url_var}: the image is built without the {name}")
             continue
         sha256 = os.getenv(sha_var, "").strip()
         if not sha256:

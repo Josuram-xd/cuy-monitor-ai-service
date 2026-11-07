@@ -21,12 +21,23 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=8.3",
+    "pytest-cov>=7.0",
     "ruff>=0.14",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+
+[tool.coverage.run]
+# the service, the edge agent and the build script; training/ and dev/ run in Colab or by hand
+source = ["app", "edge_agent", "scripts"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+# Task 14.1: the pipeline modules are covered; a change that drops this fails `pytest --cov`
+fail_under = 95
 
 [tool.ruff]
 line-length = 100

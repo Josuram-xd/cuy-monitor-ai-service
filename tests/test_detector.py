@@ -118,3 +118,28 @@ def test_an_unreadable_frame_is_an_error_and_inference_runs_off_the_event_loop()
         detector.detect(b"not a jpeg")
     frame, _ = render_frame(seed=1)
     assert asyncio.run(detector.detect_async(jpeg(frame))) == []
+
+
+class SizedSession(FakeSession):
+    """A model exported with another imgsz: its input says (1, 3, 320, 320)."""
+
+    def __init__(self, output, shape):
+        super().__init__(output)
+        self.shape = shape
+
+    def get_inputs(self):
+        return [SimpleNamespace(name="images", shape=self.shape)]
+
+
+def test_the_input_size_comes_from_the_model_it_was_exported_with():
+    session = SizedSession(np.zeros((1, 0, 6), np.float32), [1, 3, 320, 320])
+    OnnxDetector(session).detect_image(np.zeros((480, 640, 3), np.uint8))
+
+    assert session.inputs[0].shape == (1, 3, 320, 320)
+
+
+def test_a_model_with_dynamic_sizes_gets_640():
+    session = SizedSession(np.zeros((1, 0, 6), np.float32), [1, 3, "height", "width"])
+    OnnxDetector(session).detect_image(np.zeros((480, 640, 3), np.uint8))
+
+    assert session.inputs[0].shape == (1, 3, 640, 640)
