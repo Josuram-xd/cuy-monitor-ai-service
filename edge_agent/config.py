@@ -26,7 +26,7 @@ class EdgeSettings(BaseSettings):
     # frames per second sent to the service: 1-2 is enough for behavior and keeps the upload small
     fps: float = Field(default=1.0, gt=0, le=2)
     audio_enabled: bool = True
-    # length of each audio clip sent to /ai/audio
+    # length of each audio clip sent to /ai/v1/audio
     audio_clip_seconds: float = Field(default=1.0, ge=0.5, le=5)
     request_timeout_seconds: float = Field(default=10.0, gt=0)
 

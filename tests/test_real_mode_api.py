@@ -55,7 +55,7 @@ def test_health_reports_the_real_engines(client):
 
 def test_a_frame_is_kept_for_the_next_analysis(client):
     response = client.post(
-        "/ai/frames", headers=HEADERS, data=FORM, files={"file": ("f.jpg", b"jpeg", "image/jpeg")}
+        "/ai/v1/frames", headers=HEADERS, data=FORM, files={"file": ("f.jpg", b"jpeg", "image/jpeg")}
     )
 
     assert response.status_code == 202
@@ -65,7 +65,7 @@ def test_a_frame_is_kept_for_the_next_analysis(client):
 
 def test_a_frame_for_another_cage_is_refused(client):
     response = client.post(
-        "/ai/frames",
+        "/ai/v1/frames",
         headers=HEADERS,
         data=FORM | {"cageId": "cage-9"},
         files={"file": ("f.jpg", b"jpeg", "image/jpeg")},
@@ -77,7 +77,7 @@ def test_a_frame_for_another_cage_is_refused(client):
 
 def test_a_huge_frame_is_refused(client):
     response = client.post(
-        "/ai/frames",
+        "/ai/v1/frames",
         headers=HEADERS,
         data=FORM,
         files={"file": ("f.jpg", b"x" * (5 * 1024 * 1024 + 1), "image/jpeg")},
@@ -89,7 +89,7 @@ def test_a_huge_frame_is_refused(client):
 def test_a_distress_clip_is_reported_every_time(client):
     for _ in range(2):
         response = client.post(
-            "/ai/audio",
+            "/ai/v1/audio",
             headers=HEADERS,
             data=FORM,
             files={"file": ("c.wav", _wav(4000, 0.7), "audio/wav")},
@@ -105,7 +105,7 @@ def test_a_distress_clip_is_reported_every_time(client):
 def test_calm_clips_are_reported_once_per_window(client):
     for _ in range(3):
         client.post(
-            "/ai/audio",
+            "/ai/v1/audio",
             headers=HEADERS,
             data=FORM,
             files={"file": ("c.wav", _wav(200, 0.01), "audio/wav")},
@@ -116,7 +116,7 @@ def test_calm_clips_are_reported_once_per_window(client):
 
 def test_a_file_that_is_not_a_wav_gets_422(client):
     response = client.post(
-        "/ai/audio",
+        "/ai/v1/audio",
         headers=HEADERS,
         data=FORM,
         files={"file": ("c.wav", b"not a wav", "audio/wav")},
@@ -128,7 +128,7 @@ def test_a_file_that_is_not_a_wav_gets_422(client):
 
 def test_real_mode_still_needs_the_api_key(client):
     response = client.post(
-        "/ai/frames", data=FORM, files={"file": ("f.jpg", b"jpeg", "image/jpeg")}
+        "/ai/v1/frames", data=FORM, files={"file": ("f.jpg", b"jpeg", "image/jpeg")}
     )
 
     assert response.status_code == 401
@@ -150,7 +150,7 @@ def two_cages(monkeypatch):
 def test_each_cage_has_its_own_frame_window(two_cages):
     for cage in ("cage-1", "cage-0a1b2c3d", "cage-0a1b2c3d"):
         response = two_cages.post(
-            "/ai/frames",
+            "/ai/v1/frames",
             headers=HEADERS,
             data=FORM | {"cageId": cage},
             files={"file": ("f.jpg", b"jpeg", "image/jpeg")},
@@ -163,7 +163,7 @@ def test_each_cage_has_its_own_frame_window(two_cages):
 
 def test_an_audio_event_carries_the_cage_it_came_from(two_cages):
     response = two_cages.post(
-        "/ai/audio",
+        "/ai/v1/audio",
         headers=HEADERS,
         data=FORM | {"cageId": "cage-0a1b2c3d"},
         files={"file": ("c.wav", _wav(1200, 0.6), "audio/wav")},
@@ -175,7 +175,7 @@ def test_an_audio_event_carries_the_cage_it_came_from(two_cages):
 
 def test_a_cage_outside_the_list_is_still_refused(two_cages):
     response = two_cages.post(
-        "/ai/frames",
+        "/ai/v1/frames",
         headers=HEADERS,
         data=FORM | {"cageId": "cage-9"},
         files={"file": ("f.jpg", b"jpeg", "image/jpeg")},

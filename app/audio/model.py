@@ -4,7 +4,7 @@ The model is a joblib bundle written by training/train_audio.py:
 
     {"format": 1, "embedding": "yamnet-mean-1024", "classes": [...], "model": ..., "metadata": ...}
 
-With both yamnet.onnx and audio_clf.joblib loaded, /ai/audio uses it; without either one it keeps
+With both yamnet.onnx and audio_clf.joblib loaded, /ai/v1/audio uses it; without either one it keeps
 the signal rule of app/audio/classifier.py, and /ai/health says which. joblib files are pickles:
 only the file the image build downloaded and checked with AUDIO_MODEL_SHA256 is loaded, never one
 uploaded at runtime.

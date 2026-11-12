@@ -251,7 +251,7 @@ def test_with_both_models_the_frames_go_through_the_trained_chain(trained_app):
     assert isinstance(state.behavior_engine, TrainedBehaviorEngine)
 
     response = trained_app.post(
-        "/ai/frames",
+        "/ai/v1/frames",
         headers={"X-API-Key": "test-secret"},
         data={"capturedAt": "2026-11-05T12:00:00Z", "cageId": "cage-1"},
         files={"file": ("f.jpg", JPEG, "image/jpeg")},

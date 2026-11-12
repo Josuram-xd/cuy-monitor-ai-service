@@ -83,7 +83,7 @@ def test_simulator_samples_frames_and_posts_authenticated_multipart(monkeypatch,
     assert capture.released
     assert delays == [0.5, 0.5, 0.5]
     assert [url for url, _ in http_client.requests] == [
-        "http://ai.local/ai/frames",
+        "http://ai.local/ai/v1/frames",
     ] * 3
     first_request = http_client.requests[0][1]
     assert first_request["headers"] == {"X-API-Key": "test-secret"}

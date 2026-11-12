@@ -2,7 +2,7 @@
 
 IP Webcam streams the microphone as one endless WAV at /audio.wav: a RIFF header (with unknown
 sizes) and then raw PCM forever. The header is read once, then the PCM is cut into clips of N
-seconds and each clip is wrapped in its own small WAV, which is what POST /ai/audio expects.
+seconds and each clip is wrapped in its own small WAV, which is what POST /ai/v1/audio expects.
 """
 
 import io

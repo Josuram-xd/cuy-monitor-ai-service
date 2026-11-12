@@ -79,7 +79,7 @@ def replay_video(
     upload_fps = min(fps, source_fps)
     frame_stride = max(1, round(source_fps / upload_fps))
     frame_period = 1 / upload_fps
-    endpoint = f"{ai_url.rstrip('/')}/ai/frames"
+    endpoint = f"{ai_url.rstrip('/')}/ai/v1/frames"
     headers = {"X-API-Key": api_key}
     frame_index = 0
     frames_sent = 0

@@ -250,7 +250,7 @@ def test_with_the_trained_models_audio_goes_through_them(monkeypatch):
         clip = synthesize_clip(ClipKind.RUSTLE)
 
         response = client.post(
-            "/ai/audio",
+            "/ai/v1/audio",
             headers={"X-API-Key": "test-secret"},
             data={"capturedAt": "2026-11-05T12:00:00Z", "cageId": "cage-1"},
             files={"file": ("c.wav", clip, "audio/wav")},
