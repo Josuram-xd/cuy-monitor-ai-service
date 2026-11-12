@@ -9,7 +9,7 @@ See [`docs/PRD.md`](docs/PRD.md) for requirements, [`docs/ARCHITECTURE.md`](docs
 components and [`TASKS.md`](TASKS.md) for the status.
 
 ```
-A12 phone ─LAN─► edge_agent (laptop) ─HTTPS─► /ai/frames, /ai/audio ─► this service ─HTTP─► backend
+A12 phone ─LAN─► edge_agent (laptop) ─HTTPS─► /ai/v1/frames, /ai/v1/audio ─► this service ─HTTP─► backend
                                                  │
             mock events │ Amazon Bedrock │ trained models (detector, tracker, Random Forest, YAMNet)
 ```
@@ -53,7 +53,7 @@ docker build -t cuy-monitor-ai-service:local .
 
 | Variable | Default | What it does |
 |---|---|---|
-| `API_KEY` | — | Required. The same key as the backend; `/ai/frames` and `/ai/audio` ask for it |
+| `API_KEY` | — | Required. The same key as the backend; `/ai/v1/frames` and `/ai/v1/audio` ask for it |
 | `BACKEND_URL` | `http://backend:8080` | Where the events go |
 | `CAGE_ID` / `CAGE_IDS` | `cage-1` / empty | The cages this service accepts |
 | `MOCK_MODE` | `true` | Fake events instead of analysing what arrives |
@@ -108,12 +108,12 @@ the backend with `--app.health.observed-to-alert=5s --app.health.alert-to-critic
 
 With `MOCK_MODE=false` the service stops inventing events and looks at what it receives:
 
-- `POST /ai/frames` (JPEG) keeps the frames. Once per window (`WINDOW_SECONDS`, 60 s) it sends up to
+- `POST /ai/v1/frames` (JPEG) keeps the frames. Once per window (`WINDOW_SECONDS`, 60 s) it sends up to
   `WINDOW_MAX_FRAMES` of them, evenly spread, to a Bedrock vision model. The model reports, for each
   guinea pig whose mark colour it can identify, how many frames it was still, at the feeder or the
   water bottle, how far from the others and how unusual it looks. Each one becomes a `BEHAVIOR`
   event of the backend contract (one per guinea pig per window).
-- `POST /ai/audio` (16-bit WAV) is classified with a signal rule (loud and shrill = `DISTRESS`),
+- `POST /ai/v1/audio` (16-bit WAV) is classified with a signal rule (loud and shrill = `DISTRESS`),
   or with YAMNet + SVM/KNN when those models are loaded, and sent as an `AUDIO` event. Calm clips are reported once per window.
 - Whatever the model returns is validated before it is used: invalid or impossible items are
   dropped, and if Bedrock fails the window is skipped (no invented data).

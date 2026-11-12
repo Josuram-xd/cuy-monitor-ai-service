@@ -1,7 +1,7 @@
 # edge_agent — the farm laptop
 
 Reads the **Samsung A12** camera and microphone (app **IP Webcam**) over the farm Wi-Fi and sends them to the AI
-service: 1–2 JPEG frames per second to `POST /ai/frames` and ~1 s WAV clips to `POST /ai/audio`, with the
+service: 1–2 JPEG frames per second to `POST /ai/v1/frames` and ~1 s WAV clips to `POST /ai/v1/audio`, with the
 `X-API-Key` header. It never stores frames or audio on disk.
 
 ```
