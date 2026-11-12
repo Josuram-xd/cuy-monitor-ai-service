@@ -24,6 +24,29 @@ models are in use. A missing or broken model is never fatal: the service falls b
 | Frames | contract-valid fake events (or a scenario) | Amazon Bedrock (Nova 2 Lite) over up to 6 frames per window | `detector.onnx` → Hungarian tracker → 60 s window → `behavior_rf.joblib` |
 | Audio | fake events | signal rule: loud × shrill | `yamnet.onnx` embeddings → `audio_clf.joblib` (SVM or KNN) |
 
+## Design patterns
+
+Written by hand in Python; no framework supplies any of them.
+
+| Pattern | Where | How it is applied |
+|---|---|---|
+| **Strategy** | `app/vision/`, `app/audio/`, `app/behavior/` | The engine is picked at start-up from `MOCK_MODE` and the model files that loaded. Mock, Bedrock and trained-model engines are interchangeable behind the same call |
+| **Ports (Dependency Inversion)** | `InferenceSession`, `ProbabilisticModel`, `Embedder`, `AsyncSleep` | `typing.Protocol` instead of inheritance: the pipeline depends on the shape of a model, never on ONNX, scikit-learn or Bedrock. Tests pass a stub and nothing else changes |
+| **Chain of fallbacks** | engine selection | A missing or broken model is never fatal: the service drops to the next engine and `/ai/health` says which one is live |
+| **Pipeline** | `app/vision/pipeline.py` | `detector → Hungarian tracker → 60 s window → behaviour classifier`, each stage with one job |
+| **Adapter** | `app/messaging/backend_client.py` | Turns the result of a window into the event contract the backend expects, with retries |
+
+### Why `Protocol` and not a base class
+
+```python
+class ProbabilisticModel(Protocol):
+    def predict_proba(self, features: Any) -> Any: ...
+```
+
+Nothing has to inherit from it. A scikit-learn model, an ONNX session and a three-line test double all satisfy it
+just by having the method, so the pipeline never imports the library that produced the model. That is the port of a
+hexagonal architecture, expressed the way Python does it.
+
 ## Models
 
 None is committed: they go in a GitHub Release and the image downloads them at build time, checked against
