@@ -47,6 +47,59 @@ Nothing has to inherit from it. A scikit-learn model, an ONNX session and a thre
 just by having the method, so the pipeline never imports the library that produced the model. That is the port of a
 hexagonal architecture, expressed the way Python does it.
 
+## The Bedrock model
+
+Without the trained models — which is how the deployed service runs today — the frames are analysed by
+**Amazon Nova 2 Lite**:
+
+| | |
+|---|---|
+| Model id | `us.amazon.nova-2-lite-v1:0` |
+| Family | Amazon Nova 2, Lite tier (multimodal: text + images) |
+| Region | `us-east-1` (`AWS_REGION`) |
+| Set by | `BEDROCK_MODEL_ID` — default in `app/config.py` and in `infra/docker-compose.yml` |
+| API | `bedrock-runtime` **Converse**, in `app/bedrock/runtime.py` |
+| Frames per window | 6, evenly spread (`WINDOW_MAX_FRAMES`, 1–20) |
+| Credentials | none configured: the container uses the EC2 instance role `cuy-ec2-role` |
+
+Nova 2 Lite is the default because **it needs no access form**: it answers as soon as the account has Bedrock
+enabled. It is also the cheapest tier that reads images, which matters when a cage sends a window every 60 s.
+
+The `us.` prefix means it is a **cross-region inference profile**, not a plain model. That changes the IAM
+resource, which is what a policy has to allow:
+
+```
+arn:aws:bedrock:us-east-1:<account>:inference-profile/us.amazon.nova-2-lite-v1:0
+```
+
+Only `cuy-ec2-role` has `bedrock:InvokeModel`. An IAM user that can `bedrock:ListFoundationModels` still gets
+`AccessDeniedException` on a call, which is the usual confusion when trying it from a laptop.
+
+### Using a Claude model instead
+
+The Claude models work once the Anthropic use form is filled in from the Bedrock console. After that only the
+variable changes — no code:
+
+```bash
+BEDROCK_MODEL_ID=us.anthropic.claude-haiku-4-5-20251001-v1:0
+```
+
+The audio never reaches Bedrock: without `yamnet.onnx` and `audio_clf.joblib` it is classified by the signal
+rule in `app/audio/classifier.py` (loudness × shrillness), which costs nothing and needs no network.
+
+### Checking that the prediction works
+
+`/ai/health` only says whether an engine is *available*: in real mode it reports `detector: true` because
+Bedrock is there, trained model or not. To check the answers themselves:
+
+```bash
+uv run python dev/test_prediction.py
+```
+
+It runs the engines that need no Bedrock and no trained model over data whose answer is known — the four
+synthetic clips through the audio rule, and a still versus a walking guinea pig through the real feature
+extraction — and exits non-zero if any prediction lands in the wrong place.
+
 ## Models
 
 None is committed: they go in a GitHub Release and the image downloads them at build time, checked against
