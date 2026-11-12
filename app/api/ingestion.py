@@ -26,7 +26,7 @@ from app.security import require_api_key
 logger = logging.getLogger(__name__)
 
 router = APIRouter(
-    prefix="/ai",
+    prefix="/ai/v1",
     dependencies=[Depends(require_api_key)],
 )
 

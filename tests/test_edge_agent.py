@@ -142,7 +142,7 @@ async def test_a_frame_is_posted_with_the_key_the_cage_and_the_capture_time():
 
     assert result is SendResult.SENT
     [request] = received
-    assert request.url == f"{AI}/ai/frames"
+    assert request.url == f"{AI}/ai/v1/frames"
     assert request.headers["X-API-Key"] == "secret"
     body = request.content
     assert b'name="cageId"\r\n\r\ncage-7' in body

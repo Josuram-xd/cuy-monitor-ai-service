@@ -1,4 +1,4 @@
-"""Task 12.2: sends frames and clips to the AI service (POST /ai/frames, /ai/audio with X-API-Key).
+"""Task 12.2: sends frames and clips to the AI service (POST /ai/v1/frames, /ai/v1/audio with X-API-Key).
 
 There is no queue: a frame that could not be sent is dropped and the next one is a fresh frame, so
 a long internet cut never piles up minutes of old frames on the laptop. What to do next is in the
@@ -37,10 +37,10 @@ class AiServiceUploader:
         self._cage_id = cage_id
 
     async def send_frame(self, jpeg: bytes, captured_at: datetime) -> SendResult:
-        return await self._send("/ai/frames", ("frame.jpg", jpeg, "image/jpeg"), captured_at)
+        return await self._send("/ai/v1/frames", ("frame.jpg", jpeg, "image/jpeg"), captured_at)
 
     async def send_audio(self, wav: bytes, captured_at: datetime) -> SendResult:
-        return await self._send("/ai/audio", ("clip.wav", wav, "audio/wav"), captured_at)
+        return await self._send("/ai/v1/audio", ("clip.wav", wav, "audio/wav"), captured_at)
 
     async def _send(
         self, path: str, file: tuple[str, bytes, str], captured_at: datetime

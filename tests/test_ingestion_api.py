@@ -18,8 +18,8 @@ def client(monkeypatch, request):
 @pytest.mark.parametrize(
     ("path", "filename", "content_type"),
     [
-        ("/ai/frames", "frame.jpg", "image/jpeg"),
-        ("/ai/audio", "clip.wav", "audio/wav"),
+        ("/ai/v1/frames", "frame.jpg", "image/jpeg"),
+        ("/ai/v1/audio", "clip.wav", "audio/wav"),
     ],
 )
 def test_mock_ingestion_endpoints_accept_authenticated_media(client, path, filename, content_type):
@@ -36,7 +36,7 @@ def test_mock_ingestion_endpoints_accept_authenticated_media(client, path, filen
 
 def test_frame_endpoint_requires_api_key(client):
     response = client.post(
-        "/ai/frames",
+        "/ai/v1/frames",
         data={"capturedAt": "2026-10-05T14:32:00Z", "cageId": "cage-test"},
         files={"file": ("frame.jpg", b"mock media", "image/jpeg")},
     )
@@ -47,8 +47,8 @@ def test_frame_endpoint_requires_api_key(client):
 @pytest.mark.parametrize(
     ("path", "filename", "content_type"),
     [
-        ("/ai/frames", "frame.png", "image/png"),
-        ("/ai/audio", "clip.mp3", "audio/mpeg"),
+        ("/ai/v1/frames", "frame.png", "image/png"),
+        ("/ai/v1/audio", "clip.mp3", "audio/mpeg"),
     ],
 )
 def test_ingestion_endpoints_reject_unsupported_media(client, path, filename, content_type):

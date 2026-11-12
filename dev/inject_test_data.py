@@ -109,7 +109,7 @@ def inject_audio(args: argparse.Namespace) -> list[int]:
     ) as http:
         for index in range(args.count):
             response = http.post(
-                "/ai/audio",
+                "/ai/v1/audio",
                 files={"file": (f"{kind}.wav", synthesize_clip(kind, seed=index), "audio/wav")},
                 data={"capturedAt": datetime.now(UTC).isoformat(), "cageId": args.cage_id},
             )
