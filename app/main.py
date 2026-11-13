@@ -33,6 +33,7 @@ async def lifespan(app: FastAPI):
     # mock mode: fake events. Real mode: the trained chain when both models loaded, otherwise
     # Amazon Bedrock looks at the frames gathered each window.
     app.state.frame_windows = FrameWindows()
+    app.state.simulations = {}  # cage id -> the running demo task (Simulación button)
     app.state.calm_audio_throttle = CalmAudioThrottle(settings.window_seconds)
     app.state.detector = load_detector(settings.detector_path, settings.detector_confidence)
     app.state.behavior_classifier = load_behavior_classifier(settings.behavior_model_path)
