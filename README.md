@@ -62,9 +62,10 @@ Without the trained models — which is how the deployed service runs today — 
 | Frames per window | 6, evenly spread (`WINDOW_MAX_FRAMES`, 1–20) |
 | Credentials | none configured: the container uses the EC2 instance role `cuy-ec2-role` |
 
-Claude Haiku 4.5 is the default because it is **open access** in Bedrock — no Anthropic use-case form, it
-answers as soon as the account has Bedrock enabled — and it is the cheapest Claude tier that reads images,
-which matters when a cage sends a window every 60 s.
+Claude Haiku 4.5 is the default because it is the cheapest Claude tier that reads images, which matters when
+a cage sends a window every 60 s. Like every Anthropic model in Bedrock it needs the **Anthropic use-case
+form**, filled in once per account from the Bedrock console; until then every call fails with
+`ResourceNotFoundException: Model use case details have not been submitted`. Amazon Nova 2 Lite needs no form.
 
 The `us.` prefix means it is a **cross-region inference profile**, not a plain model. That changes the IAM
 resource, which is what a policy has to allow:
