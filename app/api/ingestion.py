@@ -15,13 +15,16 @@ from fastapi import (
     UploadFile,
     status,
 )
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+from pydantic.alias_generators import to_camel
 
 from app.audio.classifier import UnsupportedAudio, classify_clip
 from app.config import Settings, get_settings
-from app.contracts import AudioEventPayload, EventEnvelope, EventType
+from app.contracts import AudioEventPayload, EventEnvelope, EventType, MarkColor
 from app.contracts.events import AudioLabel
 from app.security import require_api_key
+from app.testdata.audio import ClipKind, synthesize_clip
+from app.testdata.simulation import run_simulation
 
 logger = logging.getLogger(__name__)
 
@@ -96,21 +99,24 @@ async def submit_audio(
         return AcceptedResponse()
     _require_known_cage(cage_id, settings)
     clip = await _read_limited(file, MAX_AUDIO_BYTES)
-    trained = getattr(request.app.state, "audio_classifier", None)
     try:
-        if trained is not None:
-            # YAMNet + SVM/KNN in a thread: inference never runs on the event loop
-            result = await asyncio.to_thread(trained.classify, clip)
-        else:
-            result = classify_clip(clip)
+        await _classify_and_report(request.app.state, cage_id, clip)
     except UnsupportedAudio as exception:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exception)) from None
+    return AcceptedResponse(mock_mode=False)
 
+
+async def _classify_and_report(state, cage_id: str, clip: bytes) -> None:
+    trained = getattr(state, "audio_classifier", None)
+    if trained is not None:
+        # YAMNet + SVM/KNN in a thread: inference never runs on the event loop
+        result = await asyncio.to_thread(trained.classify, clip)
+    else:
+        result = classify_clip(clip)
     # every distress clip is reported; calm clips only once per window, or the backend would be
     # flooded with "all quiet" events
-    state = request.app.state
     if result.label is AudioLabel.NORMAL and not state.calm_audio_throttle.should_report(cage_id):
-        return AcceptedResponse(mock_mode=False)
+        return
     await state.backend_event_client.enqueue_event(
         EventEnvelope(
             event_id=uuid4(),
@@ -124,4 +130,41 @@ async def submit_audio(
             ),
         )
     )
+
+
+class SimulationRequest(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    cage_id: str = Field(min_length=1, max_length=50)
+    # the marks of the cage's guinea pigs; the first one is drawn sick
+    colors: list[MarkColor] = Field(min_length=1, max_length=len(MarkColor))
+
+
+@router.post("/simulation", status_code=status.HTTP_202_ACCEPTED, response_model=AcceptedResponse)
+async def start_simulation(
+    request: Request,
+    body: SimulationRequest,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> AcceptedResponse:
+    """The dashboard's demo, asked by the backend (which already checked who owns the cage, so
+    CAGE_IDS does not apply). Drawn frames go into the real chain for 35 minutes, and one synthetic
+    squeal goes through the audio classifier, so a cage alert shows up right away."""
+    if settings.mock_mode:
+        return AcceptedResponse()
+    state = request.app.state
+    cage_id = body.cage_id
+    colors = list(dict.fromkeys(body.colors))  # one guinea pig per mark
+    engine = getattr(state, "behavior_engine", None)
+
+    async def submit(frame: bytes) -> None:
+        if engine is not None:
+            await engine.submit_frame(cage_id, frame, datetime.now(UTC))
+        else:
+            state.frame_windows.for_cage(cage_id).add(frame)
+
+    running = state.simulations.get(cage_id)
+    # pressing the button again while it runs does not start a second one
+    if running is None or running.done():
+        state.simulations[cage_id] = asyncio.create_task(run_simulation(cage_id, colors, submit))
+    await _classify_and_report(state, cage_id, synthesize_clip(ClipKind.SQUEAL))
     return AcceptedResponse(mock_mode=False)
