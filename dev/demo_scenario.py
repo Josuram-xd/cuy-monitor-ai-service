@@ -1,11 +1,11 @@
-"""Sends a drawn cage scene to the AI service as a live camera would, so a demo shows the real chain
-working: the frames go through /ai/frames, the Bedrock model reads them, and the backend decides.
+"""Sends a drawn cage scene to the AI service as a live camera would, so a demo shows the real
+chain working: the frames go through /ai/frames, the Bedrock model reads them, the backend decides.
 
-The scene has three marked guinea pigs. RED is sick: it stays hunched in a corner, away from the others,
-and never goes to the feeder. BLUE and GREEN wander, eat and drink. Nothing about the verdict is sent:
-the model has to see it, and the backend raises the alert only after the anomaly lasts (30 min by default).
+The scene has three marked guinea pigs. RED is sick: it stays hunched in a corner, away from the
+others, and never goes to the feeder. BLUE and GREEN wander, eat and drink. No verdict is sent: the
+model has to see it, and the backend raises the alert only after the anomaly lasts (30 min default).
 
-Run it inside the ai-service container (it reads API_KEY from there), for a cage the service accepts:
+Run it inside the ai-service container (it reads API_KEY there), for a cage the service accepts:
 
   python -m dev.demo_scenario --cage-id cage-0a1b2c3d --minutes 45
 """
@@ -43,9 +43,11 @@ def draw_frame(step: int) -> bytes:
     img = np.full((HEIGHT, WIDTH, 3), (170, 200, 215), np.uint8)  # wood shavings
     cv2.rectangle(img, (10, 10), (WIDTH - 10, HEIGHT - 10), (90, 90, 90), 8)  # cage wall
     cv2.ellipse(img, FEEDER, (55, 30), 0, 0, 360, (40, 90, 160), -1)
-    cv2.putText(img, "FOOD", (FEEDER[0] - 30, FEEDER[1] + 6), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-    cv2.rectangle(img, (WATER[0] - 15, WATER[1] - 80), (WATER[0] + 15, WATER[1] + 10), (230, 200, 160), -1)
-    cv2.putText(img, "WATER", (WATER[0] - 40, WATER[1] - 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (120, 60, 0), 2)
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    cv2.putText(img, "FOOD", (FEEDER[0] - 30, FEEDER[1] + 6), font, 0.6, (255, 255, 255), 2)
+    bottle = ((WATER[0] - 15, WATER[1] - 80), (WATER[0] + 15, WATER[1] + 10))
+    cv2.rectangle(img, *bottle, (230, 200, 160), -1)
+    cv2.putText(img, "WATER", (WATER[0] - 40, WATER[1] - 90), font, 0.6, (120, 60, 0), 2)
     for color, mark in MARKS.items():
         x, y = _position(color, step)
         sick = color == "RED"
@@ -78,7 +80,8 @@ def main() -> None:
                 files={"file": ("frame.jpg", draw_frame(step), "image/jpeg")},
                 data={"capturedAt": datetime.now(UTC).isoformat(), "cageId": args.cage_id},
             )
-            response.raise_for_status()  # a wrong cage or key stops the demo instead of sending into the void
+            # a wrong cage or key stops the demo instead of sending into the void
+            response.raise_for_status()
             step += 1
             if step % 30 == 0:
                 print(f"{step} frames sent", flush=True)
