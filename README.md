@@ -21,7 +21,7 @@ models are in use. A missing or broken model is never fatal: the service falls b
 
 | Input | `MOCK_MODE=true` | Real mode, without trained models | Real mode, with trained models |
 |---|---|---|---|
-| Frames | contract-valid fake events (or a scenario) | Amazon Bedrock (Nova 2 Lite) over up to 6 frames per window | `detector.onnx` → Hungarian tracker → 60 s window → `behavior_rf.joblib` |
+| Frames | contract-valid fake events (or a scenario) | Amazon Bedrock (Claude Haiku 4.5) over up to 6 frames per window | `detector.onnx` → Hungarian tracker → 60 s window → `behavior_rf.joblib` |
 | Audio | fake events | signal rule: loud × shrill | `yamnet.onnx` embeddings → `audio_clf.joblib` (SVM or KNN) |
 
 ## Design patterns
@@ -50,39 +50,45 @@ hexagonal architecture, expressed the way Python does it.
 ## The Bedrock model
 
 Without the trained models — which is how the deployed service runs today — the frames are analysed by
-**Amazon Nova 2 Lite**:
+**Claude Haiku 4.5**:
 
 | | |
 |---|---|
-| Model id | `us.amazon.nova-2-lite-v1:0` |
-| Family | Amazon Nova 2, Lite tier (multimodal: text + images) |
+| Model id | `us.anthropic.claude-haiku-4-5-20251001-v1:0` |
+| Family | Claude Haiku 4.5, Anthropic's small tier (multimodal: text + images) |
 | Region | `us-east-1` (`AWS_REGION`) |
 | Set by | `BEDROCK_MODEL_ID` — default in `app/config.py` and in `infra/docker-compose.yml` |
 | API | `bedrock-runtime` **Converse**, in `app/bedrock/runtime.py` |
 | Frames per window | 6, evenly spread (`WINDOW_MAX_FRAMES`, 1–20) |
 | Credentials | none configured: the container uses the EC2 instance role `cuy-ec2-role` |
 
-Nova 2 Lite is the default because **it needs no access form**: it answers as soon as the account has Bedrock
-enabled. It is also the cheapest tier that reads images, which matters when a cage sends a window every 60 s.
+Claude Haiku 4.5 is the default because it is **open access** in Bedrock — no Anthropic use-case form, it
+answers as soon as the account has Bedrock enabled — and it is the cheapest Claude tier that reads images,
+which matters when a cage sends a window every 60 s.
 
 The `us.` prefix means it is a **cross-region inference profile**, not a plain model. That changes the IAM
 resource, which is what a policy has to allow:
 
 ```
-arn:aws:bedrock:us-east-1:<account>:inference-profile/us.amazon.nova-2-lite-v1:0
+arn:aws:bedrock:us-east-1:<account>:inference-profile/us.anthropic.claude-haiku-4-5-20251001-v1:0
 ```
 
 Only `cuy-ec2-role` has `bedrock:InvokeModel`. An IAM user that can `bedrock:ListFoundationModels` still gets
 `AccessDeniedException` on a call, which is the usual confusion when trying it from a laptop.
 
-### Using a Claude model instead
+### Using another model instead
 
-The Claude models work once the Anthropic use form is filled in from the Bedrock console. After that only the
-variable changes — no code:
+Only the variable changes — the Converse call is the same:
 
 ```bash
-BEDROCK_MODEL_ID=us.anthropic.claude-haiku-4-5-20251001-v1:0
+BEDROCK_MODEL_ID=us.anthropic.claude-sonnet-4-6        # more accurate, clearly more expensive
+BEDROCK_MODEL_ID=global.anthropic.claude-opus-4-6-v1   # the most capable, the most expensive
+BEDROCK_MODEL_ID=us.amazon.nova-2-lite-v1:0            # Amazon Nova 2 Lite, the former default
 ```
+
+The current-generation Claude models (Sonnet 5.5, Opus 5.5) are **not** reachable through Converse: Bedrock
+serves them over the Messages API of the `bedrock-mantle` endpoint, so using one means rewriting
+`app/bedrock/runtime.py` and adding the `anthropic[bedrock]` dependency.
 
 The audio never reaches Bedrock: without `yamnet.onnx` and `audio_clf.joblib` it is classified by the signal
 rule in `app/audio/classifier.py` (loudness × shrillness), which costs nothing and needs no network.
@@ -195,8 +201,8 @@ With `MOCK_MODE=false` the service stops inventing events and looks at what it r
   dropped, and if Bedrock fails the window is skipped (no invented data).
 
 On the EC2 the credentials come from the instance role (`bedrock:InvokeModel`), so no AWS key is
-configured. Locally use `AWS_PROFILE=<profile>`. Default model: Amazon Nova 2 Lite
-(`us.amazon.nova-2-lite-v1:0`); change `BEDROCK_MODEL_ID` to use Nova Pro or a Claude model.
+configured. Locally use `AWS_PROFILE=<profile>`. Default model: Claude Haiku 4.5
+(`us.anthropic.claude-haiku-4-5-20251001-v1:0`); change `BEDROCK_MODEL_ID` to use a bigger Claude or Nova.
 
 ```bash
 docker build -t cuy-monitor-ai-service:local .

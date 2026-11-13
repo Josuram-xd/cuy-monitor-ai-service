@@ -32,7 +32,7 @@ YAMNet). That needs labelled data and training that do not exist yet. The servic
 
 | Input | Engine | Output |
 |---|---|---|
-| Frames (`/ai/frames`) | A Bedrock vision model (default Amazon Nova 2 Lite) over up to 6 frames per 60 s window | one `BEHAVIOR` per guinea pig seen (`app/vision/`) |
+| Frames (`/ai/frames`) | A Bedrock vision model (default Claude Haiku 4.5) over up to 6 frames per 60 s window | one `BEHAVIOR` per guinea pig seen (`app/vision/`) |
 | Audio (`/ai/audio`) | Signal rule: loudness x energy above 2 kHz (`app/audio/classifier.py`); with `yamnet.onnx` + `audio_clf.joblib`, YAMNet embeddings + SVM/KNN (`app/audio/model.py`, Task 11) | `AUDIO` `DISTRESS` / `NORMAL` |
 
 The model's answer is untrusted input: `app/vision/analysis.py` validates every field, drops
