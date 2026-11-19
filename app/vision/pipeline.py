@@ -14,6 +14,9 @@ from app.vision.window import FrameWindow, FrameWindows
 
 logger = logging.getLogger(__name__)
 
+# Bedrock calls at the same time: enough to keep up with many cages, few enough not to be throttled
+PARALLEL_WINDOWS = 5
+
 Sleep = Callable[[float], Awaitable[None]]
 
 
@@ -104,8 +107,15 @@ async def run_behavior_pipeline(
     settings: Settings,
     sleep: Sleep = asyncio.sleep,
 ) -> None:
+    # every cage is analysed on its own (one cage's guinea pigs never end up in another's
+    # events), a few at a time: a model call takes seconds, so thirty cages in a row would
+    # fall minutes behind
+    limit = asyncio.Semaphore(PARALLEL_WINDOWS)
+
+    async def analyze(cage_id: str, window: FrameWindow) -> None:
+        async with limit:
+            await analyze_window_once(client, analyzer, window, settings, cage_id)
+
     while True:
         await sleep(settings.window_seconds)
-        # every cage is analysed on its own: one cage's guinea pigs never end up in another's events
-        for cage_id, window in windows.items():
-            await analyze_window_once(client, analyzer, window, settings, cage_id)
+        await asyncio.gather(*(analyze(cage_id, window) for cage_id, window in windows.items()))
