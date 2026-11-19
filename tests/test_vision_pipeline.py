@@ -5,7 +5,7 @@ import pytest
 from app.bedrock.runtime import BedrockError
 from app.config import Settings
 from app.contracts import BehaviorEventPayload, EventType, MarkColor
-from app.vision.pipeline import analyze_window_once, run_behavior_pipeline
+from app.vision.pipeline import PARALLEL_WINDOWS, analyze_window_once, run_behavior_pipeline
 from app.vision.window import FrameWindow, FrameWindows
 
 
@@ -114,3 +114,32 @@ async def test_the_loop_waits_a_window_then_analyses_every_cage_on_its_own():
     assert sleeps == [60, 60]
     assert analyzer.seen == [[b"1"], [b"2"]]
     assert [e.cage_id for e in client.events] == ["cage-1", "cage-2"]
+
+
+@pytest.mark.anyio
+async def test_many_cages_are_analysed_a_few_at_a_time():
+    windows = FrameWindows()
+    for n in range(12):
+        windows.for_cage(f"cage-{n}").add(b"f")
+    running, peak = 0, 0
+
+    class _Slow(_Analyzer):
+        async def analyze(self, frames):
+            nonlocal running, peak
+            running += 1
+            peak = max(peak, running)
+            await asyncio.sleep(0.01)
+            running -= 1
+            return [_payload(MarkColor.RED)]
+
+    client = _Client()
+
+    async def sleep(delay: float) -> None:
+        if client.events:
+            raise asyncio.CancelledError
+
+    with pytest.raises(asyncio.CancelledError):
+        await run_behavior_pipeline(client, _Slow(), windows, _settings(), sleep=sleep)
+
+    assert len(client.events) == 12
+    assert 1 < peak <= PARALLEL_WINDOWS
