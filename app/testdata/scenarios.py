@@ -1,5 +1,5 @@
 import random
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Protocol
 
 from app.contracts import AudioEventPayload, BehaviorEventPayload, MarkColor
@@ -145,8 +145,9 @@ class Recovery:
         return _calm_audio()
 
 
-SCENARIOS = {
-    scenario.name: type(scenario) for scenario in (Healthy(), Lethargic(), Distress(), Recovery())
+# Prototype registry: one configured instance per scenario; build_scenario clones it
+SCENARIOS: dict[str, Scenario] = {
+    scenario.name: scenario for scenario in (Healthy(), Lethargic(), Distress(), Recovery())
 }
 
 
@@ -155,10 +156,11 @@ def build_scenario(
 ) -> Scenario:
     """The scenario called name, for the guinea pigs of these colours. Unknown name: ValueError."""
     try:
-        scenario_type = SCENARIOS[name]
+        prototype = SCENARIOS[name]
     except KeyError:
         raise ValueError(f"Unknown scenario {name!r}; one of: {', '.join(SCENARIOS)}") from None
-    scenario = scenario_type(colors=colors, window_seconds=window_seconds)
+    # Recovery's inner _lethargic is init=False: the clone rebuilds it from the new colours
+    scenario = replace(prototype, colors=colors, window_seconds=window_seconds)
     sick = getattr(scenario, "sick", None)
     if sick is not None and sick not in colors:
         raise ValueError(f"The scenario needs a {sick} guinea pig among the colours")

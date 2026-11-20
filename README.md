@@ -30,11 +30,13 @@ Written by hand in Python; no framework supplies any of them.
 
 | Pattern | Where | How it is applied |
 |---|---|---|
-| **Strategy** | `app/vision/`, `app/audio/`, `app/behavior/` | The engine is picked at start-up from `MOCK_MODE` and the model files that loaded. Mock, Bedrock and trained-model engines are interchangeable behind the same call |
+| **Strategy** | `app/vision/`, `app/behavior/`, `app/audio/classifier.py` (`AudioClassifier`) | The engine is picked at start-up from `MOCK_MODE` and the model files that loaded. Mock, Bedrock and trained-model engines are interchangeable behind the same call. The audio classifier is `SignalRuleAudioClassifier` or `TrainedAudioClassifier`, one `classify()` call |
 | **Ports (Dependency Inversion)** | `InferenceSession`, `ProbabilisticModel`, `Embedder`, `AsyncSleep` | `typing.Protocol` instead of inheritance: the pipeline depends on the shape of a model, never on ONNX, scikit-learn or Bedrock. Tests pass a stub and nothing else changes |
 | **Chain of fallbacks** | engine selection | A missing or broken model is never fatal: the service drops to the next engine and `/ai/health` says which one is live |
 | **Pipeline** | `app/vision/pipeline.py` | `detector → Hungarian tracker → 60 s window → behaviour classifier`, each stage with one job |
 | **Adapter** | `app/messaging/backend_client.py` | Turns the result of a window into the event contract the backend expects, with retries |
+| **Adapter** | `app/vision/frame_sink.py` | `BufferedFrameSink` keeps frames for Bedrock behind the same `submit_frame` call the trained engine has |
+| **Prototype** | `app/testdata/scenarios.py` | One configured scenario per name in `SCENARIOS`; `build_scenario` clones it with the cage's colours and window length |
 
 ### Why `Protocol` and not a base class
 

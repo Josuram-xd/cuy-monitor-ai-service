@@ -1,12 +1,20 @@
 import math
 from dataclasses import dataclass
+from typing import Protocol
 
 import numpy as np
 
 from app.audio.wav import UnsupportedAudio, read_wav
 from app.contracts.events import AudioLabel
 
-__all__ = ["AudioResult", "UnsupportedAudio", "classify_clip"]
+__all__ = [
+    "SIGNAL_RULE",
+    "AudioClassifier",
+    "AudioResult",
+    "SignalRuleAudioClassifier",
+    "UnsupportedAudio",
+    "classify_clip",
+]
 
 # Distress calls (squeals) are loud and shrill: a lot of the energy sits above 2 kHz.
 SHRILL_FROM_HZ = 2000
@@ -44,3 +52,19 @@ def classify_clip(wav_bytes: bytes) -> AudioResult:
     if distress >= DISTRESS_THRESHOLD:
         return AudioResult(AudioLabel.DISTRESS, round(distress, 2), duration_ms)
     return AudioResult(AudioLabel.NORMAL, round(1 - distress, 2), duration_ms)
+
+
+class AudioClassifier(Protocol):
+    """Strategy: how a clip becomes a label. The signal rule and the trained model both fit."""
+
+    def classify(self, wav_bytes: bytes) -> AudioResult: ...
+
+
+class SignalRuleAudioClassifier:
+    """Strategy: the loudness x shrillness rule, used while no trained model is loaded."""
+
+    def classify(self, wav_bytes: bytes) -> AudioResult:
+        return classify_clip(wav_bytes)
+
+
+SIGNAL_RULE = SignalRuleAudioClassifier()

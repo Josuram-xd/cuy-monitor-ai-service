@@ -18,13 +18,14 @@ from fastapi import (
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
-from app.audio.classifier import UnsupportedAudio, classify_clip
+from app.audio.classifier import SIGNAL_RULE, AudioClassifier, UnsupportedAudio
 from app.config import Settings, get_settings
 from app.contracts import AudioEventPayload, EventEnvelope, EventType, MarkColor
 from app.contracts.events import AudioLabel
 from app.security import require_api_key
 from app.testdata.audio import ClipKind, synthesize_clip
 from app.testdata.simulation import run_simulation
+from app.vision.frame_sink import frame_sink_for
 
 logger = logging.getLogger(__name__)
 
@@ -76,13 +77,10 @@ async def submit_frame(
         return AcceptedResponse()
     _require_known_cage(cage_id, settings)
     frame = await _read_limited(file, MAX_FRAME_BYTES)
-    engine = getattr(request.app.state, "behavior_engine", None)
-    if engine is not None:
-        # trained chain: the frame is detected and tracked right after the 202 is sent
-        background_tasks.add_task(engine.submit_frame, cage_id, frame, captured_at)
-    else:
-        # Bedrock: the analysis happens once per window, over the frames gathered by then
-        request.app.state.frame_windows.for_cage(cage_id).add(frame)
+    # after the 202: the trained chain detects the frame, Bedrock buffers it for its window
+    background_tasks.add_task(
+        frame_sink_for(request.app.state).submit_frame, cage_id, frame, captured_at
+    )
     return AcceptedResponse(mock_mode=False)
 
 
@@ -109,12 +107,9 @@ async def submit_audio(
 async def _classify_and_report(
     state, cage_id: str, clip: bytes, captured_at: datetime | None = None
 ) -> None:
-    trained = getattr(state, "audio_classifier", None)
-    if trained is not None:
-        # YAMNet + SVM/KNN in a thread: inference never runs on the event loop
-        result = await asyncio.to_thread(trained.classify, clip)
-    else:
-        result = classify_clip(clip)
+    classifier: AudioClassifier = getattr(state, "audio_classifier", None) or SIGNAL_RULE
+    # trained or signal rule, both in a thread: inference never runs on the event loop
+    result = await asyncio.to_thread(classifier.classify, clip)
     # every distress clip is reported; calm clips only once per window, or the backend would be
     # flooded with "all quiet" events
     if result.label is AudioLabel.NORMAL and not state.calm_audio_throttle.should_report(cage_id):
@@ -160,13 +155,10 @@ async def start_simulation(
     state = request.app.state
     cage_id = body.cage_id
     colors = list(dict.fromkeys(body.colors))  # one guinea pig per mark
-    engine = getattr(state, "behavior_engine", None)
+    sink = frame_sink_for(state)
 
     async def submit(frame: bytes) -> None:
-        if engine is not None:
-            await engine.submit_frame(cage_id, frame, datetime.now(UTC))
-        else:
-            state.frame_windows.for_cage(cage_id).add(frame)
+        await sink.submit_frame(cage_id, frame, datetime.now(UTC))
 
     running = state.simulations.get(cage_id)
     # pressing the button again while it runs does not start a second one
