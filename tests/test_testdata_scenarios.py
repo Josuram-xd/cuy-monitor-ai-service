@@ -8,6 +8,7 @@ from app.contracts import EventType, MarkColor
 from app.contracts.events import AudioLabel
 from app.mock.producer import run_scenario_producer, scenario_events
 from app.testdata.scenarios import (
+    DEFAULT_COLORS,
     SCENARIOS,
     Healthy,
     Lethargic,
@@ -134,3 +135,18 @@ def test_the_scenario_producer_sends_one_window_per_period_to_every_cage():
     # 2 windows x 2 cages x (2 behavior + 1 audio)
     assert len(events) == 12
     assert {e.cage_id for e in events} == {"cage-a", "cage-b"}
+
+
+def test_build_clones_the_prototype_and_keeps_its_own_defaults():
+    scenario = build_scenario("lethargic", (MarkColor.RED,), 30)
+
+    assert scenario is not SCENARIOS["lethargic"]
+    assert scenario.window_seconds == 30
+    assert SCENARIOS["lethargic"].window_seconds == 60
+    assert SCENARIOS["lethargic"].colors == DEFAULT_COLORS
+
+
+def test_a_recovery_clone_rebuilds_its_lethargic_part_for_its_colours():
+    scenario = build_scenario("recovery", (MarkColor.RED, MarkColor.BLUE))
+
+    assert len(scenario.behavior(0)) == 2
