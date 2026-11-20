@@ -23,6 +23,7 @@ from app.behavior.features import FEATURE_NAMES, BehaviorFeatures, compute_featu
 from app.behavior.window import BehaviorWindows, sample_frame
 from app.contracts import BehaviorEventPayload, MarkColor
 from app.vision.animal_detector import AnimalBox
+from app.vision.annotate import annotate
 from app.vision.detector import Detection, UnreadableFrame, decode_jpeg
 from app.vision.identity import Identified, Reference, identify
 from app.vision.references import ReferenceSource
@@ -71,9 +72,14 @@ class TrainedBehaviorEngine:
         self._last: dict[str, list[TrackedMark]] = {}  # the marks of the previous frame, per cage
         self._windows = BehaviorWindows()
         self._in_flight: dict[str, int] = {}
+        self._annotated: dict[str, tuple[datetime, bytes]] = {}  # cage -> (captured at, JPEG)
 
     def cage_ids(self) -> list[str]:
         return self._windows.cage_ids()
+
+    def latest_annotated(self, cage_id: str) -> tuple[datetime, bytes] | None:
+        """The last analysed frame of a cage, drawn with its boxes and identities."""
+        return self._annotated.get(cage_id)
 
     async def submit_frame(self, cage_id: str, frame: bytes, captured_at: datetime) -> bool:
         """Analyse one frame of a cage. False if it was dropped (unreadable or CPU behind)."""
@@ -84,7 +90,7 @@ class TrainedBehaviorEngine:
         previous = self._last.get(cage_id, [])
         try:
             references = await self._references(cage_id)
-            identified, width, height = await asyncio.to_thread(
+            identified, width, height, annotated = await asyncio.to_thread(
                 self._analyse, frame, references, previous
             )
         except UnreadableFrame:
@@ -95,6 +101,9 @@ class TrainedBehaviorEngine:
             return False
         finally:
             self._in_flight[cage_id] -= 1
+        known = self._annotated.get(cage_id)
+        if known is None or captured_at >= known[0]:  # frames can end out of order
+            self._annotated[cage_id] = (captured_at, annotated)
         # tracker and window are only touched here, on the event loop: no locks needed
         tracker = self._trackers.setdefault(cage_id, self._tracker_factory())
         marks = tracker.update(identified.detections, width, height)
@@ -125,13 +134,16 @@ class TrainedBehaviorEngine:
 
     def _analyse(
         self, frame: bytes, references: list[Reference], previous: list[TrackedMark]
-    ) -> tuple[Identified, int, int]:
-        """Runs in a thread: decodes the frame, finds the marks and the animals, identifies them."""
+    ) -> tuple[Identified, int, int, bytes]:
+        """Runs in a thread: decodes the frame, finds the marks and the animals, identifies them,
+        and draws the annotated picture."""
         image = decode_jpeg(frame)
         height, width = image.shape[:2]
         marks = self._detector.detect_image(image) if self._detector is not None else []
         animals = self._animals.detect_image(image) if self._animals is not None else []
-        return identify(image, marks, animals, references, previous), width, height
+        identified = identify(image, marks, animals, references, previous)
+        annotated = annotate(image, identified.detections, [a.box for a in animals])
+        return identified, width, height, annotated
 
     async def close_window(self, cage_id: str) -> list[BehaviorEventPayload]:
         """The BEHAVIOR payloads of a cage for the window that just ended; the next starts empty."""

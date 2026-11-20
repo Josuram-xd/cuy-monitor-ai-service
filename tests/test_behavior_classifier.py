@@ -3,7 +3,12 @@ import json
 import joblib
 import pytest
 
-from app.behavior.classifier import BUNDLE_FORMAT, BehaviorClassifier, load_behavior_classifier
+from app.behavior.classifier import (
+    BUNDLE_FORMAT,
+    BehaviorClassifier,
+    RuleBehaviorClassifier,
+    load_behavior_classifier,
+)
 from app.behavior.features import FEATURE_NAMES, BehaviorFeatures
 from app.contracts import MarkColor
 from training.train_behavior import main as train_main
@@ -130,3 +135,14 @@ def test_the_script_writes_a_bundle_the_service_loads_and_its_report(tmp_path):
     assert report["features"] == list(FEATURE_NAMES)
     assert len(report["sha256"]) == 64
     assert {"accuracy", "precision", "recall", "f1", "roc_auc"} <= set(report["metrics"])
+
+
+def test_the_rule_stand_in_gives_probability_from_half_the_window_up():
+    rows = [[1.0, 0, 0, 0.5], [0.75, 0, 0, 0.5], [0.5, 0, 0, 0.5], [0.2, 0, 0, 0.5]]
+
+    probs = RuleBehaviorClassifier().predict_proba(rows)
+
+    assert [p[1] for p in probs] == pytest.approx([1.0, 0.5, 0.0, 0.0])
+    assert [sum(p) for p in probs] == pytest.approx([1.0] * 4)
+    classifier = BehaviorClassifier(RuleBehaviorClassifier())
+    assert classifier.prob_anomaly([_features(60), _features(45)]) == pytest.approx([1.0, 0.5])

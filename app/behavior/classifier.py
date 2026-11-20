@@ -64,6 +64,21 @@ class BehaviorClassifier:
         return [float(row[self._anomaly_column]) for row in probabilities]
 
 
+class RuleBehaviorClassifier:
+    """Stand-in for the Random Forest while behavior_rf.joblib does not exist (not a trained model).
+
+    probAnomaly = the still share of the window, from half of it up: still all the window gives 1.0,
+    still half of it or less gives 0.0. Wrapped in BehaviorClassifier, so the engine does not know
+    the difference. Replaced by the trained model as soon as the file is there.
+    """
+
+    classes_ = [0, 1]
+
+    def predict_proba(self, rows: list[list[float]]) -> list[list[float]]:
+        anomaly = [min(1.0, max(0.0, (row[0] - 0.5) / 0.5)) for row in rows]  # row[0] = stillRatio
+        return [[1 - p, p] for p in anomaly]
+
+
 def load_behavior_classifier(path: Path) -> BehaviorClassifier | None:
     if not path.is_file():
         logger.warning("No behavior classifier at %s: running without it", path)

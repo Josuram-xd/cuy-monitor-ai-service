@@ -240,7 +240,7 @@ def trained_app(monkeypatch, tmp_path):
     detector = _ScriptedDetector([[Detection(MarkColor.RED, 0.9, _box(50, 50))]])
     monkeypatch.setattr(main_module, "load_detector", lambda *_: detector)
     # the app object outlives this test: what its startup stores must not leak into the next ones
-    for name in ("detector", "behavior_classifier", "behavior_engine"):
+    for name in ("detector", "behavior_classifier", "behavior_engine", "behavior_model"):
         monkeypatch.setattr(main_module.app.state, name, None, raising=False)
     get_settings.cache_clear()
     with TestClient(main_module.app) as test_client:
@@ -267,14 +267,30 @@ def test_with_both_models_the_frames_go_through_the_trained_chain(trained_app):
     assert trained_app.get("/ai/health").json()["models"]["behavior"] is True
 
 
-def test_without_the_classifier_bedrock_stays_the_engine(monkeypatch, tmp_path):
+def test_without_the_classifier_the_rules_stand_in_runs_the_chain(monkeypatch, tmp_path):
     monkeypatch.setenv("API_KEY", "test-secret")
     monkeypatch.setenv("MOCK_MODE", "false")
     monkeypatch.setenv("BEHAVIOR_MODEL_PATH", str(tmp_path / "missing.joblib"))
     monkeypatch.setattr(main_module, "load_detector", lambda *_: _ScriptedDetector([]))
+    monkeypatch.setattr(main_module, "load_animal_detector", lambda *_: None)
+    get_settings.cache_clear()
+    with TestClient(main_module.app):
+        assert isinstance(main_module.app.state.behavior_engine, TrainedBehaviorEngine)
+        assert main_module.app.state.behavior_model == "rules"
+        assert main_module.app.state.behavior_classifier is None
+    get_settings.cache_clear()
+
+
+def test_without_any_detector_bedrock_stays_the_engine(monkeypatch, tmp_path):
+    monkeypatch.setenv("API_KEY", "test-secret")
+    monkeypatch.setenv("MOCK_MODE", "false")
+    monkeypatch.setenv("BEHAVIOR_MODEL_PATH", str(tmp_path / "missing.joblib"))
+    monkeypatch.setattr(main_module, "load_detector", lambda *_: None)
+    monkeypatch.setattr(main_module, "load_animal_detector", lambda *_: None)
     get_settings.cache_clear()
     with TestClient(main_module.app):
         assert main_module.app.state.behavior_engine is None
+        assert main_module.app.state.behavior_model is None
     get_settings.cache_clear()
 
 
