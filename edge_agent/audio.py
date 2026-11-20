@@ -13,6 +13,8 @@ from dataclasses import dataclass
 
 import httpx
 
+from edge_agent.rtsp import FFMPEG_READ_BYTES, start_ffmpeg, stop_ffmpeg
+
 
 class AudioUnavailable(Exception):
     """The phone stream ended, failed, or is not 16-bit PCM WAV."""
@@ -27,6 +29,10 @@ class PcmFormat:
     @property
     def bytes_per_second(self) -> int:
         return self.channels * self.sample_rate * self.sample_width
+
+
+# what ffmpeg writes for an RTSP camera: mono 16 kHz 16-bit PCM, the format the service takes
+RTSP_PCM = PcmFormat(channels=1, sample_rate=16_000, sample_width=2)
 
 
 def parse_wav_header(header: bytes) -> tuple[PcmFormat, int] | None:
@@ -70,6 +76,18 @@ def to_wav(pcm: bytes, fmt: PcmFormat) -> bytes:
     return buffer.getvalue()
 
 
+async def pcm_clips(chunks: AsyncIterator[bytes], fmt: PcmFormat, clip_seconds: float):
+    """Raw PCM of a known format -> one WAV file every clip_seconds of audio."""
+    buffer = b""
+    frame_bytes = fmt.channels * fmt.sample_width
+    clip_bytes = int(fmt.bytes_per_second * clip_seconds) // frame_bytes * frame_bytes
+    async for chunk in chunks:
+        buffer += chunk
+        while len(buffer) >= clip_bytes:
+            yield to_wav(buffer[:clip_bytes], fmt)
+            buffer = buffer[clip_bytes:]
+
+
 async def wav_clips(chunks: AsyncIterator[bytes], clip_seconds: float) -> AsyncIterator[bytes]:
     """The bytes of an endless WAV stream -> one complete WAV file every clip_seconds of audio."""
     buffer = b""
@@ -108,3 +126,29 @@ class A12Microphone:
         except httpx.HTTPError as exception:
             raise AudioUnavailable(f"the phone audio stream failed: {exception}") from exception
         raise AudioUnavailable("the phone audio stream ended")
+
+
+class RtspMicrophone:
+    """The audio of an RTSP camera, read by one ffmpeg as raw PCM and cut like the phone clips."""
+
+    def __init__(self, url: str):
+        self._url = url
+
+    async def clips(self, clip_seconds: float) -> AsyncIterator[bytes]:
+        try:
+            process = await start_ffmpeg(
+                self._url, "-vn", "-ac", "1", "-ar", "16000", "-f", "s16le", "-"
+            )
+        except OSError as exception:
+            raise AudioUnavailable(f"ffmpeg could not start: {exception}") from exception
+
+        async def chunks() -> AsyncIterator[bytes]:
+            while chunk := await process.stdout.read(FFMPEG_READ_BYTES):
+                yield chunk
+
+        try:
+            async for clip in pcm_clips(chunks(), RTSP_PCM, clip_seconds):
+                yield clip
+        finally:
+            await stop_ffmpeg(process)
+        raise AudioUnavailable("the camera audio stream ended")
