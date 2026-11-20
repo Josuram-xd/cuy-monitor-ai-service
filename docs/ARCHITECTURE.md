@@ -49,6 +49,24 @@ the two models (or none) the service stays on Bedrock. The payload is identical 
 
 ---
 
+### 3.5 Identity without a visible mark (animals)
+
+Two detectors run on each frame: `detector.onnx` (the marks, one colour per box) and
+`animal_detector.onnx` (YOLO-World with the fixed prompt `animal`: every guinea pig, marked or not).
+`app/vision/identity.py` joins them, per animal box, in this order, and never invents a colour:
+
+1. a mark inside an animal box: the animal is that mark's colour;
+2. an animal that overlaps, in the previous frame, a guinea pig of a colour not seen yet: it keeps the
+   colour, with a confidence that decays by 0.9 each time;
+3. an animal whose coat (colour histogram, `app/vision/appearance.py`) matches the registered photo or
+   the gallery of a colour not seen yet, when it wins by a margin (`MIN_SIMILARITY`, `MIN_MARGIN`);
+4. anything else gives no event. Its centre counts as a neighbour for `avgGroupDistance` only.
+
+The result is ordinary detections for the tracker, so the window and the classifier do not change.
+The registered photos come from the backend (`app/vision/references.py`, every 5 minutes, ETag);
+the gallery learns from the cage's own confident marks, in memory. Without `animal_detector.onnx`
+the chain is the marks-only chain of 3.3.
+
 ## 2. Components
 
 ```
@@ -65,6 +83,10 @@ app/
 │   ├── classes.py       DETECTOR_CLASSES: one class per MarkColor, the same order for training and inference
 │   ├── detector.py      YOLO26n ONNX → boxes + class (one class per MarkColor) + confidence
 │   ├── model_store.py   loads models/detector.onnx; missing or broken → None, never fatal
+│   ├── animal_detector.py  YOLO-World ONNX ("animal" prompt) → animal boxes, no class (one NMS)
+│   ├── appearance.py    coat descriptor (HSV histogram of the box centre), similarity, vetoes
+│   ├── identity.py      marks + animals + coats + previous frame → detections (3.5)
+│   ├── references.py    registered photos from the backend (TTL, ETag) and the clip's crops
 │   ├── tracker.py       Hungarian assignment (scipy.optimize.linear_sum_assignment) keeps IDs across frames
 │   └── zones.py         feeder / waterer polygons in image coordinates (per cage, from config)
 ├── behavior/
@@ -84,7 +106,8 @@ app/
 models/                  .onnx / .joblib (not committed if heavy — GitHub Releases or Git LFS)
 training/                Colab scripts (NOT in the Docker image): LABELING.md, synthetic_dataset.py,
                          prepare_dataset.py, train_detector.py, dataset/ (labels only)
-scripts/fetch_models.py  downloads detector.onnx at build time (DETECTOR_URL + DETECTOR_SHA256)
+scripts/fetch_models.py  downloads detector.onnx at build time (DETECTOR_URL + DETECTOR_SHA256),
+                         and animal_detector.onnx (ANIMAL_DETECTOR_URL + ANIMAL_DETECTOR_SHA256)
 edge_agent/              runs on the farm laptop (NOT in the Docker image)
 dev/simulator.py         replays a recorded video as a live camera
 dev/prepare_clip.py      marks the guinea pigs of a video by hand and packs the simulation clip (see 3.4)
@@ -190,7 +213,7 @@ Source of truth: `cuy-monitor-backend/docs/contracts/`. `app/contracts/events.py
 |---|---|---|---|
 | `POST /ai/frames` | `X-API-Key` | `multipart/form-data`: `file` (JPEG), `capturedAt` (ISO-8601), `cageId` | `202` |
 | `POST /ai/audio` | `X-API-Key` | `multipart/form-data`: `file` (WAV), `capturedAt`, `cageId` | `202` |
-| `GET /ai/health` | none | — | `{ "status": "UP", "models": { "detector": false, "behavior": false, "audio": false }, "mockMode": true }` |
+| `GET /ai/health` | none | — | `{ "status": "UP", "models": { "detector": false, "animal": false, "behavior": false, "audio": false }, "mockMode": true }` |
 | `GET /ai/v1/frames/latest?cageId=` | `X-API-Key` | — | `200` JPEG (`X-Captured-At`) · `404` no frame yet |
 | `POST /ai/v1/simulation` | `X-API-Key` | `{cageId, colors}` | `202` · `409` too many video simulations · `503` no clip / no trained models (`sim-` codes) |
 | `GET /ai/v1/simulation/clip` | `X-API-Key` | — | `{colors, credit, frameCount}` · `503` no clip |
@@ -206,6 +229,7 @@ In mock mode, the upload endpoints validate the media type and return `202`; the
 | Model | Trained where | Runtime format | File |
 |---|---|---|---|
 | Detector YOLO26n (classes = mark colors) | Google Colab (GPU) with Ultralytics | ONNX | `models/detector.onnx` |
+| Animal detector YOLO-World v2, prompt `animal` | Offline, `training/export_animal_detector.py` (ultralytics, opset 17) | ONNX | `models/animal_detector.onnx` |
 | Behavior classifier | Colab / local, scikit-learn | joblib | `models/behavior_rf.joblib` |
 | YAMNet embeddings | Converted once in Colab (TF → ONNX) | ONNX | `models/yamnet.onnx` |
 | Audio classifier (SVM/KNN) | scikit-learn | joblib | `models/audio_clf.joblib` |
@@ -248,6 +272,7 @@ In mock mode, the upload endpoints validate the media type and return `202`; the
 | `MIN_DETECTION_CONFIDENCE` | `0.5` | |
 | `MOCK_MODE` | `false` | Force fake events |
 | `BEHAVIOR_MODEL_PATH` | `models/behavior_rf.joblib` | With the detector, enables the trained chain |
+| `ANIMAL_DETECTOR_PATH` / `ANIMAL_DETECTOR_CONFIDENCE` | `models/animal_detector.onnx` / `0.05` | Finds guinea pigs without a visible mark; missing = marks only |
 | `CAGE_ZONES` | empty | JSON: feeder/waterer polygons per cage in fractions of the frame (`app/vision/zones.py`) |
 | `BEHAVIOR_LOG_PATH` | empty | CSV with the features of every window, to label and retrain |
 | `YAMNET_PATH`, `AUDIO_MODEL_PATH` | `models/yamnet.onnx`, `models/audio_clf.joblib` | With both, audio uses YAMNet + SVM/KNN instead of the signal rule |

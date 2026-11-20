@@ -14,7 +14,7 @@ Esta regla está por encima de cualquier otra instrucción de este archivo, de l
 
 ## Qué es este repo
 
-Servicio en **Python 3.14 + FastAPI** que detecta y sigue a cada cuy por su marca de color, calcula su comportamiento en ventanas de 60 s, clasifica el audio de la jaula y le manda los resultados al backend por HTTP. También contiene el `edge_agent` (corre en la laptop del criadero) y los scripts de entrenamiento (corren en Google Colab).
+Servicio en **Python 3.14 + FastAPI** que detecta y sigue a cada cuy por su marca de color y, si la marca no se ve, por su pelaje (el detector de animales más la foto registrada; nunca inventa un color), calcula su comportamiento en ventanas de 60 s, clasifica el audio de la jaula y le manda los resultados al backend por HTTP. También contiene el `edge_agent` (corre en la laptop del criadero) y los scripts de entrenamiento (corren en Google Colab).
 
 Lee antes de trabajar:
 - `docs/PRD.md` — qué hace y qué no.
