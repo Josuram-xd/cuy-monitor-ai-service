@@ -15,10 +15,11 @@ from datetime import UTC, datetime
 
 import httpx
 
-from edge_agent.audio import A12Microphone, AudioUnavailable
+from edge_agent.audio import A12Microphone, AudioUnavailable, RtspMicrophone
 from edge_agent.backoff import Backoff
-from edge_agent.camera import A12Camera, CameraUnavailable
-from edge_agent.config import EdgeSettings
+from edge_agent.camera import A12Camera, CameraUnavailable, RtspCamera
+from edge_agent.config import EdgeSettings, mask_url
+from edge_agent.rtsp import require_ffmpeg
 from edge_agent.uploader import AiServiceUploader, SendResult
 
 logger = logging.getLogger("edge_agent")
@@ -35,8 +36,22 @@ def utc_now() -> datetime:
     return datetime.now(UTC)
 
 
+def choose_camera(settings: EdgeSettings, phone: httpx.AsyncClient) -> A12Camera | RtspCamera:
+    if settings.camera_rtsp_url:
+        return RtspCamera(settings.camera_rtsp_url, settings.fps)
+    return A12Camera(phone, settings.a12_url)
+
+
+def choose_microphone(
+    settings: EdgeSettings, phone: httpx.AsyncClient
+) -> A12Microphone | RtspMicrophone:
+    if settings.camera_rtsp_url:
+        return RtspMicrophone(settings.camera_rtsp_url)
+    return A12Microphone(phone, settings.a12_url)
+
+
 async def run_frames(
-    camera: A12Camera,
+    camera: A12Camera | RtspCamera,
     uploader: AiServiceUploader,
     fps: float,
     sleep: Sleep = asyncio.sleep,
@@ -141,6 +156,8 @@ async def run(settings: EdgeSettings) -> None:
     timeout = httpx.Timeout(settings.request_timeout_seconds)
     # the phone is on the LAN, the service on the internet: separate clients, separate connection
     # pools
+    if settings.camera_rtsp_url:
+        require_ffmpeg()
     async with (
         httpx.AsyncClient(timeout=timeout) as phone,
         httpx.AsyncClient(timeout=timeout) as service,
@@ -148,19 +165,25 @@ async def run(settings: EdgeSettings) -> None:
         uploader = AiServiceUploader(
             service, settings.ai_url, settings.api_key.get_secret_value(), settings.cage_id
         )
-        tasks = [run_frames(A12Camera(phone, settings.a12_url), uploader, settings.fps)]
+        camera = choose_camera(settings, phone)
+        tasks = [run_frames(camera, uploader, settings.fps)]
+        if isinstance(camera, RtspCamera):
+            tasks.append(camera.run())
         if settings.audio_enabled:
             buffer = ClipBuffer()
-            microphone = A12Microphone(phone, settings.a12_url)
+            microphone = choose_microphone(settings, phone)
             tasks += [
                 record_audio(microphone, buffer, settings.audio_clip_seconds),
                 send_audio(buffer, uploader),
             ]
+        source = (
+            mask_url(settings.camera_rtsp_url) if settings.camera_rtsp_url else settings.a12_url
+        )
         logger.info(
             "Edge agent for %s: %s fps from %s to %s (audio %s)",
             settings.cage_id,
             settings.fps,
-            settings.a12_url,
+            source,
             settings.ai_url,
             "on" if settings.audio_enabled else "off",
         )

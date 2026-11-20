@@ -56,7 +56,7 @@ def test_main_runs_the_agent_with_the_settings(monkeypatch):
 
 
 def test_main_names_the_missing_settings_without_their_values(monkeypatch, capsys):
-    for name in ("A12_URL", "AI_URL", "API_KEY", "CAGE_ID"):
+    for name in ("AI_URL", "API_KEY", "CAGE_ID"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr(
         entrypoint, "EdgeSettings", lambda: EdgeSettings(_env_file=None, api_key="top-secret")
@@ -65,8 +65,31 @@ def test_main_names_the_missing_settings_without_their_values(monkeypatch, capsy
     assert entrypoint.main() == 2
 
     err = capsys.readouterr().err
-    assert "A12_URL" in err and "CAGE_ID" in err
+    assert "AI_URL" in err and "CAGE_ID" in err
     assert "top-secret" not in err
+
+
+def test_main_says_how_to_set_a_camera_when_there_is_none(monkeypatch, capsys):
+    monkeypatch.setattr(
+        entrypoint,
+        "EdgeSettings",
+        lambda: _settings(a12_url=""),
+    )
+
+    assert entrypoint.main() == 2
+
+    assert "CAMERA_RTSP_URL" in capsys.readouterr().err
+
+
+def test_main_stops_with_a_clear_message_when_ffmpeg_is_missing(monkeypatch, capsys):
+    async def no_ffmpeg(settings):
+        raise entrypoint.FfmpegMissing("ffmpeg is not on PATH")
+
+    monkeypatch.setattr(entrypoint, "EdgeSettings", _settings)
+    monkeypatch.setattr(entrypoint, "run", no_ffmpeg)
+
+    assert entrypoint.main() == 2
+    assert "ffmpeg is not on PATH" in capsys.readouterr().err
 
 
 def test_ctrl_c_stops_the_agent_cleanly(monkeypatch):

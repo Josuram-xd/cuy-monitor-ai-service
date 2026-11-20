@@ -187,6 +187,7 @@ In mock mode, the upload endpoints validate the media type and return `202`; the
 - Sends 1–2 fps JPEGs and ~1 s WAV clips to `https://cuymonitor.duckdns.org/ai/...` with `X-API-Key`.
 - Retries with backoff if the internet drops; drops frames rather than building an unbounded queue.
 - Config in `edge_agent/.env` (template `config.example.env`): `A12_URL`, `AI_URL`, `API_KEY`, `CAGE_ID`, `FPS`.
+  Optional `CAMERA_RTSP_URL` (TP-Link Tapo C200): frames and audio come from its RTSP stream through ffmpeg instead of the phone.
 - Frames: `GET {A12_URL}/shot.jpg` every tick (no MJPEG decoding, light for the Celeron). Audio: the endless
   WAV at `{A12_URL}/audio.wav`, cut into ~1 s WAV clips. No queue for frames (a failed one is replaced by a fresh
   one); at most 5 clips waiting. Install guide, systemd unit and optional Dockerfile in `edge_agent/`.
