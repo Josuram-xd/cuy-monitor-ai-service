@@ -4,6 +4,9 @@ Nothing grows without limit (AGENTS: old Celeron, unstable internet):
 - frames: one at a time; a frame that failed is dropped and the next tick takes a fresh one;
 - audio: at most MAX_PENDING_CLIPS waiting to be sent; when the upload is slower than the
   microphone the oldest clip is dropped, the phone stream is never paused.
+
+Task 12.6: run() is a supervisor. It asks the backend which camera the breeder chose (every
+settings.camera_poll_seconds), switches to it without a restart, and reports the status back.
 """
 
 import asyncio
@@ -17,9 +20,17 @@ import httpx
 
 from edge_agent.audio import A12Microphone, AudioUnavailable, RtspMicrophone
 from edge_agent.backoff import Backoff
-from edge_agent.camera import A12Camera, CameraUnavailable, RtspCamera
+from edge_agent.camera import A12Camera, CameraUnavailable, RtspCamera, probe_phone
 from edge_agent.config import EdgeSettings, mask_url
-from edge_agent.rtsp import require_ffmpeg
+from edge_agent.remote_camera import (
+    BackendUnreachable,
+    CameraSource,
+    camera_status,
+    env_source,
+    fetch_source,
+    report_status,
+)
+from edge_agent.rtsp import probe_rtsp
 from edge_agent.uploader import AiServiceUploader, SendResult
 
 logger = logging.getLogger("edge_agent")
@@ -36,18 +47,30 @@ def utc_now() -> datetime:
     return datetime.now(UTC)
 
 
-def choose_camera(settings: EdgeSettings, phone: httpx.AsyncClient) -> A12Camera | RtspCamera:
-    if settings.camera_rtsp_url:
-        return RtspCamera(settings.camera_rtsp_url, settings.fps)
-    return A12Camera(phone, settings.a12_url)
+def source_label(source: CameraSource) -> str:
+    return "the RTSP camera" if source.kind == "RTSP" else "the phone"
+
+
+def choose_camera(
+    source: CameraSource, settings: EdgeSettings, phone: httpx.AsyncClient
+) -> A12Camera | RtspCamera:
+    if source.kind == "RTSP":
+        return RtspCamera(source.url, settings.fps)
+    return A12Camera(phone, source.url)
 
 
 def choose_microphone(
-    settings: EdgeSettings, phone: httpx.AsyncClient
+    source: CameraSource, phone: httpx.AsyncClient
 ) -> A12Microphone | RtspMicrophone:
-    if settings.camera_rtsp_url:
-        return RtspMicrophone(settings.camera_rtsp_url)
-    return A12Microphone(phone, settings.a12_url)
+    if source.kind == "RTSP":
+        return RtspMicrophone(source.url)
+    return A12Microphone(phone, source.url)
+
+
+async def probe_source(source: CameraSource, phone: httpx.AsyncClient) -> str:
+    if source.kind == "RTSP":
+        return await probe_rtsp(source.url)
+    return await probe_phone(phone, source.url)
 
 
 async def run_frames(
@@ -58,6 +81,7 @@ async def run_frames(
     now: Now = utc_now,
     monotonic: Callable[[], float] = time.monotonic,
     max_ticks: int | None = None,
+    source: str = "the phone",
 ) -> int:
     """Send frames forever (or max_ticks times, for tests). Returns how many were accepted."""
     period = 1.0 / fps
@@ -70,7 +94,7 @@ async def run_frames(
             frame = await camera.snapshot()
         except CameraUnavailable as exception:
             delay = backoff.next_delay()
-            logger.warning("No frame from the phone (%s); next try in %.0f s", exception, delay)
+            logger.warning("No frame from %s (%s); next try in %.0f s", source, exception, delay)
             await sleep(delay)
             continue
         result = await uploader.send_frame(frame, now())
@@ -110,13 +134,14 @@ class ClipBuffer:
 
 
 async def record_audio(
-    microphone: A12Microphone,
+    microphone: A12Microphone | RtspMicrophone,
     buffer: ClipBuffer,
     clip_seconds: float,
     sleep: Sleep = asyncio.sleep,
     now: Now = utc_now,
+    source: str = "the phone",
 ) -> None:
-    """Read the phone microphone forever, reconnecting with backoff when the stream drops."""
+    """Read the microphone forever, reconnecting with backoff when the stream drops."""
     backoff = Backoff()
     while True:
         try:
@@ -125,7 +150,9 @@ async def record_audio(
                 backoff.reset()
         except AudioUnavailable as exception:
             delay = backoff.next_delay()
-            logger.warning("No audio from the phone (%s); reconnecting in %.0f s", exception, delay)
+            logger.warning(
+                "No audio from %s (%s); reconnecting in %.0f s", source, exception, delay
+            )
             await sleep(delay)
 
 
@@ -152,39 +179,94 @@ async def send_audio(
     return sent
 
 
-async def run(settings: EdgeSettings) -> None:
+async def run_source(
+    source: CameraSource,
+    camera: A12Camera | RtspCamera,
+    settings: EdgeSettings,
+    phone: httpx.AsyncClient,
+    uploader: AiServiceUploader,
+) -> None:
+    """The loops of one camera: frames, the RTSP reader and the audio. Runs until cancelled."""
+    label = source_label(source)
+    tasks = [run_frames(camera, uploader, settings.fps, source=label)]
+    if isinstance(camera, RtspCamera):
+        tasks.append(camera.run())
+    if settings.audio_enabled:
+        buffer = ClipBuffer()
+        microphone = choose_microphone(source, phone)
+        tasks += [
+            record_audio(microphone, buffer, settings.audio_clip_seconds, source=label),
+            send_audio(buffer, uploader),
+        ]
+    await asyncio.gather(*tasks)
+
+
+async def stop(task: asyncio.Task | None) -> None:
+    """Cancel the loops of the old camera and wait until ffmpeg has been stopped."""
+    if task is not None:
+        task.cancel()
+        await asyncio.wait([task])
+
+
+async def run(
+    settings: EdgeSettings,
+    fetch: Callable[..., Awaitable[CameraSource | None]] = fetch_source,
+    probe: Callable[[CameraSource, httpx.AsyncClient], Awaitable[str]] = probe_source,
+    sleep: Sleep = asyncio.sleep,
+) -> None:
     timeout = httpx.Timeout(settings.request_timeout_seconds)
+    base = settings.backend_url or settings.ai_url
+    key = settings.api_key.get_secret_value()
     # the phone is on the LAN, the service on the internet: separate clients, separate connection
     # pools
-    if settings.camera_rtsp_url:
-        require_ffmpeg()
     async with (
         httpx.AsyncClient(timeout=timeout) as phone,
         httpx.AsyncClient(timeout=timeout) as service,
     ):
-        uploader = AiServiceUploader(
-            service, settings.ai_url, settings.api_key.get_secret_value(), settings.cage_id
-        )
-        camera = choose_camera(settings, phone)
-        tasks = [run_frames(camera, uploader, settings.fps)]
-        if isinstance(camera, RtspCamera):
-            tasks.append(camera.run())
-        if settings.audio_enabled:
-            buffer = ClipBuffer()
-            microphone = choose_microphone(settings, phone)
-            tasks += [
-                record_audio(microphone, buffer, settings.audio_clip_seconds),
-                send_audio(buffer, uploader),
-            ]
-        source = (
-            mask_url(settings.camera_rtsp_url) if settings.camera_rtsp_url else settings.a12_url
-        )
+        uploader = AiServiceUploader(service, settings.ai_url, key, settings.cage_id)
         logger.info(
-            "Edge agent for %s: %s fps from %s to %s (audio %s)",
+            "Edge agent for %s: %s fps to %s (audio %s)",
             settings.cage_id,
             settings.fps,
-            source,
             settings.ai_url,
             "on" if settings.audio_enabled else "off",
         )
-        await asyncio.gather(*tasks)
+        current: CameraSource | None = None
+        task: asyncio.Task | None = None
+        camera = probed = None
+        first = True
+        while True:
+            # a camera loop that died on an unexpected error is started again below
+            if task is not None and task.done():
+                logger.error("The camera stopped unexpectedly: %s", task.exception())
+                current, task = None, None
+            try:
+                source = await fetch(service, base, key) or env_source(settings)
+            except BackendUnreachable as exception:
+                logger.warning("Keeping the current camera: %s", exception)
+                source = current or env_source(settings)
+            changed = first or source != current
+            first = False
+            if changed:
+                await stop(task)
+                current, task, camera, probed = source, None, None, None
+                if source is None:
+                    logger.warning("No camera yet: set it up from the app (cage page > Cámara)")
+                else:
+                    probed = await probe(source, phone)
+                    logger.info("Camera %s: %s", mask_url(source.url), probed)
+                    if probed != "FFMPEG_MISSING":
+                        camera = choose_camera(source, settings, phone)
+                        task = asyncio.create_task(
+                            run_source(source, camera, settings, phone, uploader)
+                        )
+            # right after a switch the first frames are still on their way: report next round
+            if (
+                current is not None
+                and current.version is not None
+                and not (changed and probed == "CONNECTED")
+            ):
+                await report_status(
+                    service, base, key, current.version, camera_status(camera, probed)
+                )
+            await sleep(settings.camera_poll_seconds)

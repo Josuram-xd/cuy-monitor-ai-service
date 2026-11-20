@@ -6,7 +6,7 @@ The API key is never in the code: it is the same API_KEY the AI service and the 
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
-from pydantic import Field, SecretStr, ValidationInfo, field_validator, model_validator
+from pydantic import Field, SecretStr, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ENV_FILE = Path(__file__).with_name(".env")
@@ -17,6 +17,7 @@ class EdgeSettings(BaseSettings):
         env_file=ENV_FILE, env_file_encoding="utf-8", case_sensitive=False, extra="ignore"
     )
 
+    # fallbacks only: the camera is chosen in the app, these are used when the app has none
     # IP Webcam on the A12, e.g. http://192.168.1.50:8080 (shown on the phone screen)
     a12_url: str = ""
     # RTSP stream of a TP-Link Tapo camera, e.g. rtsp://user:pass@192.168.1.60:554/stream1.
@@ -24,6 +25,10 @@ class EdgeSettings(BaseSettings):
     camera_rtsp_url: str = ""
     # the public AI service, e.g. https://cuymonitor.duckdns.org (the agent adds /ai/...)
     ai_url: str
+    # where the camera settings live; empty = the same host as ai_url (only local development)
+    backend_url: str = ""
+    # how often the agent asks the backend for the camera and reports its status
+    camera_poll_seconds: float = Field(default=15.0, ge=5, le=300)
     api_key: SecretStr
     # the cage code shown in the dashboard ("Mis jaulas")
     cage_id: str = Field(min_length=1, max_length=50)
@@ -34,12 +39,12 @@ class EdgeSettings(BaseSettings):
     audio_clip_seconds: float = Field(default=1.0, ge=0.5, le=5)
     request_timeout_seconds: float = Field(default=10.0, gt=0)
 
-    @field_validator("a12_url", "ai_url")
+    @field_validator("a12_url", "backend_url", "ai_url")
     @classmethod
     def no_trailing_slash(cls, value: str, info: ValidationInfo) -> str:
         value = value.strip().rstrip("/")
-        if info.field_name == "a12_url" and not value:
-            return value  # optional: an RTSP camera does not use the phone
+        if info.field_name in ("a12_url", "backend_url") and not value:
+            return value  # optional
         if not value.startswith(("http://", "https://")):
             raise ValueError("must start with http:// or https://")
         return value
@@ -51,12 +56,6 @@ class EdgeSettings(BaseSettings):
         if value and not value.startswith("rtsp://"):
             raise ValueError("must start with rtsp://")
         return value
-
-    @model_validator(mode="after")
-    def needs_a_camera(self):
-        if not (self.a12_url or self.camera_rtsp_url):
-            raise ValueError("set A12_URL (IP Webcam) or CAMERA_RTSP_URL (Tapo)")
-        return self
 
 
 def mask_url(url: str) -> str:
