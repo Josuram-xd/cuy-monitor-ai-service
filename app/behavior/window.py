@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import math
 from collections import deque
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -41,6 +42,8 @@ class MarkSample:
 class FrameSample:
     captured_at: datetime
     marks: tuple[MarkSample, ...]
+    # animals without an identity (Task A8): they are not behaviour events, but they are neighbours
+    others: tuple[tuple[float, float], ...] = ()
 
     def mark(self, color: MarkColor) -> MarkSample | None:
         return next((m for m in self.marks if m.color == color), None)
@@ -52,8 +55,9 @@ def sample_frame(
     frame_width: int,
     frame_height: int,
     zones: CageZones,
+    others: Sequence[tuple[float, float]] = (),
 ) -> FrameSample:
-    """Tracker output of one frame -> the sample the window keeps."""
+    """Tracker output of one frame -> the sample the window keeps. others: pixel centres."""
     diagonal = math.hypot(frame_width, frame_height)
     samples = []
     for mark in marks:
@@ -69,7 +73,8 @@ def sample_frame(
                 at_waterer=at_waterer,
             )
         )
-    return FrameSample(captured_at, tuple(samples))
+    points = tuple((x / diagonal, y / diagonal) for x, y in others)
+    return FrameSample(captured_at, tuple(samples), points)
 
 
 class BehaviorWindow:
