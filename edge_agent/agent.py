@@ -20,7 +20,13 @@ import httpx
 
 from edge_agent.audio import A12Microphone, AudioUnavailable, RtspMicrophone
 from edge_agent.backoff import Backoff
-from edge_agent.camera import A12Camera, CameraUnavailable, RtspCamera, probe_phone
+from edge_agent.camera import (
+    A12Camera,
+    CameraAuthFailed,
+    CameraUnavailable,
+    RtspCamera,
+    probe_phone,
+)
 from edge_agent.config import EdgeSettings, mask_url
 from edge_agent.remote_camera import (
     BackendUnreachable,
@@ -38,6 +44,8 @@ logger = logging.getLogger("edge_agent")
 MAX_PENDING_CLIPS = 5
 # after a REJECTED answer (wrong key or cage) try only now and then: a person must fix the config
 REJECTED_PAUSE_SECONDS = 60.0
+# a refused login is not retried until the dashboard changes the camera (version or URL)
+PARKED_WARNING = "Camera login failed; waiting for new settings from the dashboard"
 
 Sleep = Callable[[float], Awaitable[None]]
 Now = Callable[[], datetime]
@@ -188,17 +196,24 @@ async def run_source(
 ) -> None:
     """The loops of one camera: frames, the RTSP reader and the audio. Runs until cancelled."""
     label = source_label(source)
-    tasks = [run_frames(camera, uploader, settings.fps, source=label)]
+    coros = [run_frames(camera, uploader, settings.fps, source=label)]
     if isinstance(camera, RtspCamera):
-        tasks.append(camera.run())
+        coros.append(camera.run())
     if settings.audio_enabled:
         buffer = ClipBuffer()
         microphone = choose_microphone(source, phone)
-        tasks += [
+        coros += [
             record_audio(microphone, buffer, settings.audio_clip_seconds, source=label),
             send_audio(buffer, uploader),
         ]
-    await asyncio.gather(*tasks)
+    tasks = [asyncio.create_task(coro) for coro in coros]
+    try:
+        await asyncio.gather(*tasks)
+    finally:
+        # one loop that raises (a refused login) must stop the others, not leave them running
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 async def stop(task: asyncio.Task | None) -> None:
@@ -236,10 +251,18 @@ async def run(
         camera = probed = None
         first = True
         while True:
-            # a camera loop that died on an unexpected error is started again below
+            report_now = False
             if task is not None and task.done():
-                logger.error("The camera stopped unexpectedly: %s", task.exception())
-                current, task = None, None
+                error = task.exception()
+                if isinstance(error, CameraAuthFailed):
+                    # parked: `current` stays, so only a changed version or URL starts it again
+                    logger.warning(PARKED_WARNING)
+                    task, camera, probed = None, None, "AUTH_FAILED"
+                    report_now = True
+                else:
+                    # a camera loop that died on an unexpected error is started again below
+                    logger.error("The camera stopped unexpectedly: %s", error)
+                    current, task = None, None
             try:
                 source = await fetch(service, base, key) or env_source(settings)
             except BackendUnreachable as exception:
@@ -255,16 +278,21 @@ async def run(
                 else:
                     probed = await probe(source, phone)
                     logger.info("Camera %s: %s", mask_url(source.url), probed)
-                    if probed != "FFMPEG_MISSING":
+                    if probed == "AUTH_FAILED":
+                        logger.warning(PARKED_WARNING)
+                    elif probed != "FFMPEG_MISSING":
                         camera = choose_camera(source, settings, phone)
                         task = asyncio.create_task(
                             run_source(source, camera, settings, phone, uploader)
                         )
             # right after a switch the first frames are still on their way: report next round
+            # a parked camera is reported once, when it parks, not on every poll
+            parked = probed == "AUTH_FAILED"
             if (
                 current is not None
                 and current.version is not None
                 and not (changed and probed == "CONNECTED")
+                and (changed or report_now or not parked)
             ):
                 await report_status(
                     service, base, key, current.version, camera_status(camera, probed)

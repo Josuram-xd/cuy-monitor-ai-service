@@ -21,7 +21,7 @@ from edge_agent.audio import (
     wav_clips,
 )
 from edge_agent.backoff import Backoff
-from edge_agent.camera import A12Camera, CameraUnavailable
+from edge_agent.camera import A12Camera, CameraAuthFailed, CameraUnavailable, RtspCamera
 from edge_agent.config import EdgeSettings
 from edge_agent.remote_camera import BackendUnreachable, CameraSource
 from edge_agent.uploader import AiServiceUploader, SendResult, utc_iso
@@ -502,18 +502,94 @@ async def test_no_camera_anywhere_starts_no_loops(loops):
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("probed", ["AUTH_FAILED", "FFMPEG_MISSING"])
-async def test_a_failed_test_is_reported_with_the_backend_version(loops, probed):
-    backend = _Backend(PHONE_CAMERA, PHONE_CAMERA, probe=probed)
+async def test_a_failed_test_without_ffmpeg_is_reported_every_poll_and_starts_nothing(loops):
+    backend = _Backend(PHONE_CAMERA, PHONE_CAMERA, probe="FFMPEG_MISSING")
 
     with pytest.raises(_Stop):
         await run(
             _supervised_settings(), fetch=backend.fetch, probe=backend.probe, sleep=backend.sleep
         )
 
-    assert loops.reports == [(3, probed), (3, probed)]
-    # FFMPEG_MISSING means no ffmpeg loops; the phone camera is still started for AUTH_FAILED
-    assert len(loops.started) == (0 if probed == "FFMPEG_MISSING" else 1)
+    assert loops.reports == [(3, "FFMPEG_MISSING"), (3, "FFMPEG_MISSING")]
+    assert loops.started == []
+
+
+@pytest.mark.anyio
+async def test_a_camera_that_refuses_the_login_gets_no_loops_and_one_report(loops, caplog):
+    backend = _Backend(RTSP_CAMERA, RTSP_CAMERA, RTSP_CAMERA, probe="AUTH_FAILED")
+
+    with caplog.at_level(logging.WARNING, logger="edge_agent"), pytest.raises(_Stop):
+        await run(
+            _supervised_settings(), fetch=backend.fetch, probe=backend.probe, sleep=backend.sleep
+        )
+
+    assert loops.started == []
+    assert loops.reports == [(4, "AUTH_FAILED")]
+    assert backend.probed == [RTSP_CAMERA]  # no new login while the settings stay the same
+    assert "waiting for new settings from the dashboard" in caplog.text
+    assert "pw" not in caplog.text  # the RTSP password is never logged
+
+
+@pytest.mark.anyio
+async def test_a_parked_camera_is_tried_again_only_when_the_version_changes(loops):
+    answers = iter(["AUTH_FAILED", "CONNECTED"])
+    logins = []
+
+    async def probe(source, phone):
+        logins.append(source.version)
+        return next(answers)
+
+    new_settings = CameraSource("RTSP", RTSP_CAMERA.url, version=5)
+    backend = _Backend(RTSP_CAMERA, RTSP_CAMERA, new_settings)
+
+    with pytest.raises(_Stop):
+        await run(_supervised_settings(), fetch=backend.fetch, probe=probe, sleep=backend.sleep)
+
+    assert logins == [4, 5]
+    assert loops.started == [new_settings]
+    assert loops.reports == [(4, "AUTH_FAILED")]
+
+
+@pytest.mark.anyio
+async def test_a_camera_that_loses_the_login_later_is_parked(loops, monkeypatch):
+    calls = []
+
+    async def login_lost(source, camera, settings, phone, uploader):
+        calls.append(source)
+        raise CameraAuthFailed("refused")
+
+    monkeypatch.setattr(agent, "run_source", login_lost)
+    backend = _Backend(PHONE_CAMERA, PHONE_CAMERA, PHONE_CAMERA)
+
+    with pytest.raises(_Stop):
+        await run(
+            _supervised_settings(), fetch=backend.fetch, probe=backend.probe, sleep=backend.sleep
+        )
+
+    assert calls == [PHONE_CAMERA]  # not started again while the settings stay the same
+    assert loops.reports == [(3, "AUTH_FAILED")]
+
+
+@pytest.mark.anyio
+async def test_a_refused_login_stops_the_frame_loop_too():
+    before = asyncio.all_tasks()
+
+    class LostCamera(RtspCamera):
+        async def run(self, sleep=None):
+            raise CameraAuthFailed("refused")
+
+    async with httpx.AsyncClient() as phone:
+        with pytest.raises(CameraAuthFailed):
+            await agent.run_source(
+                RTSP_CAMERA,
+                LostCamera(RTSP_CAMERA.url, fps=1),
+                _supervised_settings(audio_enabled=False),
+                phone,
+                _Uploader([]),
+            )
+
+    # the frame loop was cancelled with the RTSP reader: no task of the camera is still running
+    assert all(task.done() for task in asyncio.all_tasks() - before)
 
 
 @pytest.mark.anyio
