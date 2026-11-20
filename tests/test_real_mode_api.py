@@ -9,6 +9,14 @@ from app.config import get_settings
 from app.main import app
 
 HEADERS = {"X-API-Key": "test-secret"}
+
+
+@pytest.fixture(autouse=True)
+def no_animal_model(monkeypatch):
+    # the tests expect the Bedrock path, even where models/ has the animal detector
+    monkeypatch.setenv("ANIMAL_DETECTOR_PATH", "models/none.onnx")
+
+
 FORM = {"capturedAt": "2026-10-05T14:32:00Z", "cageId": "cage-1"}
 
 

@@ -26,6 +26,7 @@ def test_health_reports_a_loaded_detector_even_in_mock_mode(monkeypatch):
     monkeypatch.setenv("API_KEY", "test-secret")
     monkeypatch.setenv("MOCK_MODE", "true")
     monkeypatch.setattr(main, "load_detector", lambda path, confidence: object())
+    monkeypatch.setattr(main, "load_animal_detector", lambda path, confidence: None)
 
     with TestClient(main.app) as client:
         models = client.get("/ai/health").json()["models"]

@@ -12,7 +12,11 @@ from app.api.ingestion import router as ingestion_router
 from app.audio.model import load_audio_classifier
 from app.audio.throttle import CalmAudioThrottle
 from app.bedrock.runtime import BedrockRuntime
-from app.behavior.classifier import load_behavior_classifier
+from app.behavior.classifier import (
+    BehaviorClassifier,
+    RuleBehaviorClassifier,
+    load_behavior_classifier,
+)
 from app.behavior.engine import TrainedBehaviorEngine
 from app.config import Settings, get_settings
 from app.messaging.backend_client import BackendEventClient
@@ -55,21 +59,31 @@ async def lifespan(app: FastAPI):
         settings.yamnet_path, settings.audio_model_path
     )
     app.state.behavior_engine = None
+    app.state.behavior_model = None  # "trained" | "rules": which classifier the engine uses
     app.state.sim_clip = load_clip(settings.sim_clip_dir)
     backend_references = None
     if settings.mock_mode:
         producer = asyncio.create_task(_mock_producer(client, settings))
-    elif (
-        app.state.detector is not None or app.state.animal_detector is not None
-    ) and app.state.behavior_classifier is not None:
-        # the classifier and one detector are there: they replace Bedrock for the frames
-        # (audio is the same). The animal detector adds the guinea pigs without a visible mark
+    elif app.state.detector is not None or app.state.animal_detector is not None:
+        # one detector is there: it replaces Bedrock for the frames (audio is the same). The
+        # animal detector adds the guinea pigs without a visible mark. Without the trained
+        # classifier, the rule stand-in classifies the windows (see RuleBehaviorClassifier)
         references_for, backend_references = _references_for(
             settings, app.state.sim_clip, app.state.animal_detector
         )
+        classifier = app.state.behavior_classifier
+        if classifier is None:
+            classifier = BehaviorClassifier(RuleBehaviorClassifier())
+            app.state.behavior_model = "rules"
+            logger.info(
+                "Behavior engine: trained detectors + tracker + rules (no behavior_rf.joblib)"
+            )
+        else:
+            app.state.behavior_model = "trained"
+            logger.info("Behavior engine: trained detectors + tracker + Random Forest")
         engine = TrainedBehaviorEngine(
             app.state.detector,
-            app.state.behavior_classifier,
+            classifier,
             _zones_for(settings, app.state.sim_clip),
             settings.window_seconds,
             settings.behavior_log_path,
@@ -77,7 +91,6 @@ async def lifespan(app: FastAPI):
             references_for=references_for,
         )
         app.state.behavior_engine = engine
-        logger.info("Behavior engine: trained detectors + tracker + Random Forest")
         producer = asyncio.create_task(run_trained_behavior_pipeline(client, engine, settings))
     else:
         logger.info("Behavior engine: Amazon Bedrock (%s)", settings.bedrock_model_id)
@@ -158,6 +171,10 @@ class HealthResponse(BaseModel):
     status: Literal["UP"] = "UP"
     models: ModelStatus
     mock_mode: bool = Field(serialization_alias="mockMode")
+    # "trained" (behavior_rf.joblib), "rules" (stand-in while it is missing), null (Bedrock or mock)
+    behavior_model: Literal["trained", "rules"] | None = Field(
+        default=None, serialization_alias="behaviorModel"
+    )
 
 
 app = FastAPI(title="Cuy Monitor AI Service", lifespan=lifespan)
@@ -181,4 +198,5 @@ def health(request: Request) -> HealthResponse:
             audio=real or trained_audio,
         ),
         mock_mode=settings.mock_mode,
+        behavior_model=getattr(request.app.state, "behavior_model", None),
     )
