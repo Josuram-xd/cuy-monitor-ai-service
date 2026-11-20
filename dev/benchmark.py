@@ -3,8 +3,10 @@
 Run it on the EC2 and on the farm laptop with the same models; the numbers decide ADR-005 (analyse
 in the cloud or on the laptop) and go in docs/METRICS.md (Task 13.2).
 
-  python -m dev.benchmark --detector models/detector.onnx --yamnet models/yamnet.onnx \
-      --behavior-model models/behavior_rf.joblib --audio-model models/audio_clf.joblib
+  python -m dev.benchmark --detector models/detector.onnx \
+      --animal-model models/animal_detector.onnx \
+      --yamnet models/yamnet.onnx --behavior-model models/behavior_rf.joblib \
+      --audio-model models/audio_clf.joblib
 
 Every model is optional: what is missing is skipped. The frames and clips are synthetic (no camera
 needed), so the times are those of the models, not of the network.
@@ -82,6 +84,23 @@ def bench_detector(path: Path, frames: list[bytes], runs: int) -> dict:
     return result
 
 
+def bench_identify(animal_path: Path | None, frames: list[bytes], runs: int) -> dict:
+    """Per frame: the animal detector (when given) and identify() with no registered coats."""
+    from app.vision.animal_detector import OnnxAnimalDetector
+    from app.vision.detector import decode_jpeg
+    from app.vision.identity import identify
+
+    animals = OnnxAnimalDetector.load(animal_path) if animal_path else None
+    frames_forever = cycle(frames)
+
+    def one_frame() -> None:
+        image = decode_jpeg(next(frames_forever))
+        found = animals.detect_image(image) if animals is not None else []
+        identify(image, [], found, [], [])
+
+    return timed(one_frame, runs)
+
+
 def bench_window(path: Path | None, detector_path: Path | None, frames: list[bytes]) -> dict:
     """One 60 s window at 2 fps: tracker + features (+ Random Forest when given)."""
     from app.behavior.features import compute_features
@@ -148,6 +167,7 @@ def bench_audio(yamnet: Path | None, model: Path | None, runs: int) -> dict:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Time and memory of each model on this machine")
     parser.add_argument("--detector", type=Path)
+    parser.add_argument("--animal-model", type=Path)
     parser.add_argument("--behavior-model", type=Path)
     parser.add_argument("--yamnet", type=Path)
     parser.add_argument("--audio-model", type=Path)
@@ -155,7 +175,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, help="also write the JSON here")
     args = parser.parse_args(argv)
 
-    for path in (args.detector, args.behavior_model, args.yamnet, args.audio_model):
+    for path in (
+        args.detector,
+        args.animal_model,
+        args.behavior_model,
+        args.yamnet,
+        args.audio_model,
+    ):
         if path and not path.is_file():
             parser.error(f"{path} does not exist")
 
@@ -172,6 +198,8 @@ def main(argv: list[str] | None = None) -> int:
     frames = synthetic_jpegs(20)
     if args.detector:
         report["detector"] = bench_detector(args.detector, frames, args.runs)
+    if args.animal_model:
+        report["identifyFrame"] = bench_identify(args.animal_model, frames, args.runs)
     report["behaviorWindow"] = bench_window(args.behavior_model, args.detector, frames)
     report["audio"] = bench_audio(args.yamnet, args.audio_model, args.runs)
     report["peakMemoryMb"] = peak_memory_mb()

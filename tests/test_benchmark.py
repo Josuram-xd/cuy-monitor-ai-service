@@ -2,7 +2,9 @@
 
 import json
 
-from dev.benchmark import main, peak_memory_mb, timed
+import pytest
+
+from dev.benchmark import bench_identify, main, peak_memory_mb, synthetic_jpegs, timed
 
 
 def test_without_models_it_still_times_the_window_and_the_signal_rule(tmp_path, capsys):
@@ -47,3 +49,14 @@ def test_audio_timings_share_the_clips_without_running_out(monkeypatch):
     result = benchmark.bench_audio(yamnet=object(), model=None, runs=30)
 
     assert set(result) == {"signalRule", "yamnetEmbedding"}
+
+
+def test_the_identify_timing_runs_without_an_animal_model():
+    result = bench_identify(None, synthetic_jpegs(2, width=320, height=240), runs=3)
+
+    assert result["runs"] == 3 and result["p50Ms"] >= 0
+
+
+def test_a_missing_animal_model_is_refused(tmp_path, capsys):
+    with pytest.raises(SystemExit):
+        main(["--animal-model", str(tmp_path / "absent.onnx")])
