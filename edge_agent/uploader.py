@@ -1,4 +1,4 @@
-"""Task 12.2: sends frames and clips to the AI service (POST /ai/v1/frames, /ai/v1/audio with X-API-Key).
+"""Task 12.2: sends frames and clips to the AI service (/ai/v1/frames, /ai/v1/audio; X-API-Key).
 
 There is no queue: a frame that could not be sent is dropped and the next one is a fresh frame, so
 a long internet cut never piles up minutes of old frames on the laptop. What to do next is in the
