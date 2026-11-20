@@ -42,6 +42,14 @@ def extract_clip(archive: Path, folder: Path) -> Path:
 # (URL variable, sha256 variable, path variable, default path, what it is)
 MODELS = (
     ("DETECTOR_URL", "DETECTOR_SHA256", "DETECTOR_PATH", "models/detector.onnx", "detector"),
+    # the YOLO-World animal detector (Task A2), exported offline: training/export_animal_detector.py
+    (
+        "ANIMAL_DETECTOR_URL",
+        "ANIMAL_DETECTOR_SHA256",
+        "ANIMAL_DETECTOR_PATH",
+        "models/animal_detector.onnx",
+        "animal detector",
+    ),
     (
         "BEHAVIOR_MODEL_URL",
         "BEHAVIOR_MODEL_SHA256",
