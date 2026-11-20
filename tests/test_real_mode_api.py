@@ -50,7 +50,7 @@ def test_health_reports_the_real_engines(client):
     body = client.get("/ai/health").json()
 
     assert body["mockMode"] is False
-    assert body["models"] == {"detector": True, "behavior": True, "audio": True}
+    assert body["models"] == {"detector": True, "animal": False, "behavior": True, "audio": True}
 
 
 def test_a_frame_is_kept_for_the_next_analysis(client):

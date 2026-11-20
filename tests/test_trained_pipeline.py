@@ -15,7 +15,10 @@ from app.behavior.classifier import BehaviorClassifier
 from app.behavior.engine import MAX_FRAMES_IN_FLIGHT, TrainedBehaviorEngine
 from app.config import Settings, get_settings
 from app.contracts import BehaviorEventPayload, EventType, MarkColor
+from app.vision.animal_detector import AnimalBox
+from app.vision.appearance import describe
 from app.vision.detector import Detection
+from app.vision.identity import Reference
 from app.vision.pipeline import close_trained_window_once, run_trained_behavior_pipeline
 from app.vision.zones import NO_ZONES, CageZones, Zone
 from training.train_behavior import main as train_main
@@ -273,3 +276,109 @@ def test_without_the_classifier_bedrock_stays_the_engine(monkeypatch, tmp_path):
     with TestClient(main_module.app):
         assert main_module.app.state.behavior_engine is None
     get_settings.cache_clear()
+
+
+class _ScriptedAnimals:
+    """Returns the next list of animal boxes each frame (then nothing)."""
+
+    def __init__(self, frames):
+        self.frames = list(frames)
+
+    def detect_image(self, image_bgr):
+        return self.frames.pop(0) if self.frames else []
+
+
+class _Source:
+    """A reference source with fixed references that remembers what it learnt."""
+
+    def __init__(self, references):
+        self.references_list = references
+        self.enrolled = []
+        self.asked = 0
+
+    async def references(self, cage_id):
+        self.asked += 1
+        return self.references_list
+
+    def enrol(self, cage_id, color, descriptor):
+        self.enrolled.append((cage_id, color))
+
+
+BLACK_BOX = (100.0, 100.0, 200.0, 200.0)
+BLACK_FRAME = np.zeros((H, W, 3), dtype=np.uint8)  # the JPEG above is black too
+
+
+@pytest.mark.anyio
+async def test_an_unmarked_guinea_pig_is_identified_by_its_coat():
+    source = _Source([Reference(MarkColor.GREEN, None, [describe(BLACK_FRAME, BLACK_BOX)])])
+    engine = TrainedBehaviorEngine(
+        None,
+        BehaviorClassifier(_FakeModel()),
+        lambda _: NO_ZONES,
+        60,
+        animals=_ScriptedAnimals([[AnimalBox(0.5, BLACK_BOX)]]),
+        references_for=lambda _: source,
+    )
+
+    await engine.submit_frame("cage-1", JPEG, START)
+    [green] = await engine.close_window("cage-1")
+
+    assert green.color is MarkColor.GREEN
+    assert green.detection_confidence > 0.9
+
+
+@pytest.mark.anyio
+async def test_an_animal_whose_coat_matches_nobody_gives_no_event():
+    source = _Source([Reference(MarkColor.GREEN, "WHITE", [describe(BLACK_FRAME, BLACK_BOX)])])
+    engine = TrainedBehaviorEngine(
+        None,
+        BehaviorClassifier(_FakeModel()),
+        lambda _: NO_ZONES,
+        60,
+        animals=_ScriptedAnimals([[AnimalBox(0.5, BLACK_BOX)]]),
+        references_for=lambda _: source,
+    )
+
+    await engine.submit_frame("cage-1", JPEG, START)
+
+    assert await engine.close_window("cage-1") == []
+
+
+@pytest.mark.anyio
+async def test_a_confident_mark_inside_an_animal_teaches_its_gallery():
+    source = _Source([])
+    mark = Detection(MarkColor.RED, 0.9, (140.0, 140.0, 150.0, 150.0))
+    engine = TrainedBehaviorEngine(
+        _ScriptedDetector([[mark]]),
+        BehaviorClassifier(_FakeModel()),
+        lambda _: NO_ZONES,
+        60,
+        animals=_ScriptedAnimals([[AnimalBox(0.5, BLACK_BOX)]]),
+        references_for=lambda _: source,
+    )
+
+    await engine.submit_frame("cage-1", JPEG, START)
+    [red] = await engine.close_window("cage-1")
+
+    assert red.color is MarkColor.RED
+    assert source.enrolled == [("cage-1", MarkColor.RED)]
+
+
+@pytest.mark.anyio
+async def test_without_an_animal_detector_the_coats_are_never_asked_for():
+    class _Explodes:
+        def __call__(self, cage_id):
+            raise AssertionError("no references without an animal detector")
+
+    detector = _ScriptedDetector([[Detection(MarkColor.RED, 0.9, _box(50, 50))]])
+    engine = TrainedBehaviorEngine(
+        detector,
+        BehaviorClassifier(_FakeModel()),
+        lambda _: NO_ZONES,
+        60,
+        references_for=_Explodes(),
+    )
+
+    await engine.submit_frame("cage-1", JPEG, START)
+
+    assert [p.color for p in await engine.close_window("cage-1")] == [MarkColor.RED]
