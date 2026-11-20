@@ -125,6 +125,7 @@
 - [x] **Task 12.4** — `docs(edge): add service install guide for Windows and Linux`
 - [x] **Task 12.5** — `build(edge): add optional Dockerfile for the edge agent on Linux` *(opcional)*
   Solo para una laptop con Linux; en Windows se instala como servicio nativo (Task 12.4).
+- [x] **Task 12.6** — `feat(edge): take the camera from the dashboard`
 
 ---
 

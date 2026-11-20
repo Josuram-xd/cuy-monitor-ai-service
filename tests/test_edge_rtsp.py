@@ -12,6 +12,7 @@ from edge_agent.agent import choose_camera, choose_microphone
 from edge_agent.audio import A12Microphone, AudioUnavailable, RtspMicrophone
 from edge_agent.camera import A12Camera, CameraUnavailable, RtspCamera, split_jpeg_frames
 from edge_agent.config import EdgeSettings, mask_url
+from edge_agent.remote_camera import CameraSource
 from edge_agent.rtsp import FfmpegMissing, require_ffmpeg
 
 RTSP = "rtsp://tapo-user:s3cret@192.168.1.60:554/stream1"
@@ -68,29 +69,30 @@ def test_the_password_never_reaches_the_logs(url, masked):
 # ---- choosing the camera from the settings
 
 
-def test_without_an_rtsp_url_the_phone_is_used_as_before():
+def test_a_phone_source_is_read_as_before():
     phone = httpx.AsyncClient()
     settings = _settings(a12_url="http://phone:8080")
+    source = CameraSource("PHONE", "http://phone:8080")
 
-    assert isinstance(choose_camera(settings, phone), A12Camera)
-    assert isinstance(choose_microphone(settings, phone), A12Microphone)
+    assert isinstance(choose_camera(source, settings, phone), A12Camera)
+    assert isinstance(choose_microphone(source, phone), A12Microphone)
 
 
-def test_with_an_rtsp_url_the_tapo_gives_frames_and_audio():
+def test_an_rtsp_source_gives_frames_and_audio():
     phone = httpx.AsyncClient()
     settings = _settings(a12_url="", camera_rtsp_url=RTSP, fps=2)
+    source = CameraSource("RTSP", RTSP)
 
-    camera = choose_camera(settings, phone)
+    camera = choose_camera(source, settings, phone)
 
     assert isinstance(camera, RtspCamera) and camera._url == RTSP and camera._fps == 2
-    assert isinstance(choose_microphone(settings, phone), RtspMicrophone)
+    assert isinstance(choose_microphone(source, phone), RtspMicrophone)
 
 
-def test_the_rtsp_url_must_be_rtsp_and_one_camera_is_needed():
+def test_the_rtsp_url_must_be_rtsp_and_the_camera_is_optional():
     with pytest.raises(ValueError, match="rtsp://"):
         _settings(a12_url="", camera_rtsp_url="http://tapo/stream1")
-    with pytest.raises(ValueError, match="A12_URL"):
-        _settings(a12_url="")
+    assert _settings(a12_url="").a12_url == ""
     assert _settings(a12_url="http://phone:8080").camera_rtsp_url == ""
 
 

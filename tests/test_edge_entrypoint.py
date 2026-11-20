@@ -2,11 +2,13 @@
 
 import asyncio
 
+import httpx
 import pytest
 
 import edge_agent.__main__ as entrypoint
 import edge_agent.agent as agent
 from edge_agent.config import EdgeSettings
+from edge_agent.remote_camera import CameraSource
 
 
 def _settings(**overrides) -> EdgeSettings:
@@ -36,7 +38,11 @@ async def test_run_starts_the_frame_loop_and_the_audio_loops_only_when_enabled(
     monkeypatch.setattr(agent, "record_audio", fake("record"))
     monkeypatch.setattr(agent, "send_audio", fake("send"))
 
-    await agent.run(_settings(audio_enabled=audio))
+    settings = _settings(audio_enabled=audio)
+    source = CameraSource("PHONE", settings.a12_url)
+    async with httpx.AsyncClient() as phone:
+        camera = agent.choose_camera(source, settings, phone)
+        await agent.run_source(source, camera, settings, phone, None)
 
     assert len(started) == loops
     assert started[0] == "frames"
@@ -67,29 +73,6 @@ def test_main_names_the_missing_settings_without_their_values(monkeypatch, capsy
     err = capsys.readouterr().err
     assert "AI_URL" in err and "CAGE_ID" in err
     assert "top-secret" not in err
-
-
-def test_main_says_how_to_set_a_camera_when_there_is_none(monkeypatch, capsys):
-    monkeypatch.setattr(
-        entrypoint,
-        "EdgeSettings",
-        lambda: _settings(a12_url=""),
-    )
-
-    assert entrypoint.main() == 2
-
-    assert "CAMERA_RTSP_URL" in capsys.readouterr().err
-
-
-def test_main_stops_with_a_clear_message_when_ffmpeg_is_missing(monkeypatch, capsys):
-    async def no_ffmpeg(settings):
-        raise entrypoint.FfmpegMissing("ffmpeg is not on PATH")
-
-    monkeypatch.setattr(entrypoint, "EdgeSettings", _settings)
-    monkeypatch.setattr(entrypoint, "run", no_ffmpeg)
-
-    assert entrypoint.main() == 2
-    assert "ffmpeg is not on PATH" in capsys.readouterr().err
 
 
 def test_ctrl_c_stops_the_agent_cleanly(monkeypatch):
