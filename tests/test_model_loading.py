@@ -110,3 +110,35 @@ def test_mock_mode_can_replay_a_scenario(monkeypatch):
     get_settings.cache_clear()
 
     assert started == ["lethargic"]
+
+
+def test_the_simulation_clip_zip_is_unpacked_and_removed(no_model_vars, tmp_path, monkeypatch):
+    import zipfile
+
+    archive = tmp_path / "sim_clip.zip"
+    with zipfile.ZipFile(archive, "w") as bundle:
+        bundle.writestr("manifest.json", "{}")
+        bundle.writestr("frames/0001.jpg", b"jpeg")
+    monkeypatch.setenv("SIM_CLIP_URL", archive.as_uri())
+    monkeypatch.setenv("SIM_CLIP_SHA256", hashlib.sha256(archive.read_bytes()).hexdigest())
+    monkeypatch.setenv("SIM_CLIP_PATH", str(tmp_path / "models" / "sim_clip.zip"))
+    monkeypatch.chdir(tmp_path)
+
+    assert fetch_models.main() == 0
+
+    clip = tmp_path / "models" / "sim_clip"
+    assert (clip / "frames" / "0001.jpg").read_bytes() == b"jpeg"
+    assert not (tmp_path / "models" / "sim_clip.zip").exists()
+
+
+@pytest.mark.parametrize("name", ["../escape.txt", "/abs.txt", r"frames\..\..\x.txt"])
+def test_a_zip_with_a_path_outside_its_folder_is_refused(tmp_path, name):
+    import zipfile
+
+    archive = tmp_path / "bad.zip"
+    with zipfile.ZipFile(archive, "w") as bundle:
+        bundle.writestr(name, b"x")
+
+    with pytest.raises(ValueError):
+        fetch_models.extract_clip(archive, tmp_path / "out")
+    assert not (tmp_path / "escape.txt").exists()

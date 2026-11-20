@@ -87,7 +87,10 @@ training/                Colab scripts (NOT in the Docker image): LABELING.md, s
 scripts/fetch_models.py  downloads detector.onnx at build time (DETECTOR_URL + DETECTOR_SHA256)
 edge_agent/              runs on the farm laptop (NOT in the Docker image)
 dev/simulator.py         replays a recorded video as a live camera
+dev/prepare_clip.py      marks the guinea pigs of a video by hand and packs the simulation clip (see 3.4)
+app/testdata/video.py    the video simulation: clip loader, scripted sensors, replay loop
 tests/
+
 ```
 
 ## 3. Processing pipeline
@@ -120,6 +123,37 @@ POST /ai/audio (WAV, ~1 s, 16 kHz mono)
 ```
 
 Audio events are cage-level (no guinea pig).
+
+### 3.3 Video simulation (the dashboard's "Simulación con video")
+
+A cage whose code starts with `sim-` (the backend generates it, one per account) plays a prepared
+guinea pig video through the same chain as a real camera: detector → tracker → 60 s window → Random
+Forest. Its events carry `source: "simulation"`; every other cage keeps `"ai-service"`.
+
+- `POST /ai/v1/simulation` with a `sim-` code starts the replay (`202`). It replays the clip at 1 frame
+  per second for at most 60 minutes. Each 60 frames it sends a scripted `WEIGHT` (base weight ± 3 g) and
+  one audio clip through the real audio classifier. About four minutes in, the weight falls (25 g per
+  window, up to 75 g) and two distress calls go out, so a cage alert shows up during a demo.
+- Limits: at most 2 video simulations at the same time (`409` for a third), `503` when the clip or the
+  trained models are missing (`/ai/v1/simulation/clip` says whether the clip is there).
+- `GET /ai/v1/simulation/{cageId}` → `{running, startedAt, framesSent, frameCount, credit}`;
+  `DELETE /ai/v1/simulation/{cageId}` stops it (also a drawn demo). Both are called by the backend.
+- The clip is `models/sim_clip/` (`SIM_CLIP_DIR`): `manifest.json` (credit, colours, zones, base weight)
+  and `frames/NNNN.jpg`. It is a zip on a GitHub Release, downloaded and unpacked at build time with
+  `SIM_CLIP_URL` / `SIM_CLIP_SHA256`. Without it the video simulation is off, never an error.
+
+The marks are painted on the frames once, by hand: `python -m dev.prepare_clip VIDEO --colors RED,BLUE
+--title ... --author ... --license ... --license-url ... --source-url ...`. It needs ffmpeg and tkinter.
+Every `--every` seconds (5 by default) click the back of each colour (right click = not visible); the
+marks in between are interpolated in a straight line, and the marks are painted in the colours the
+detector was trained with. It writes `data/sim_clip/` and `data/sim_clip.zip` and prints the sha256.
+Use only videos under a free licence (CC0 or CC BY) and keep the credit in the manifest.
+
+### 3.4 Latest frame of each cage
+
+`GET /ai/v1/frames/latest?cageId=` returns the last JPEG received for that cage (the edge agent's frame
+or the simulation's), with `X-Captured-At` and `Cache-Control: no-store`. `404` when the cage has none
+yet. The backend serves it to the cage's owner as the live picture. Only real mode keeps frames.
 
 ## 4. Contracts (copied from the backend)
 
@@ -157,6 +191,11 @@ Source of truth: `cuy-monitor-backend/docs/contracts/`. `app/contracts/events.py
 | `POST /ai/frames` | `X-API-Key` | `multipart/form-data`: `file` (JPEG), `capturedAt` (ISO-8601), `cageId` | `202` |
 | `POST /ai/audio` | `X-API-Key` | `multipart/form-data`: `file` (WAV), `capturedAt`, `cageId` | `202` |
 | `GET /ai/health` | none | — | `{ "status": "UP", "models": { "detector": false, "behavior": false, "audio": false }, "mockMode": true }` |
+| `GET /ai/v1/frames/latest?cageId=` | `X-API-Key` | — | `200` JPEG (`X-Captured-At`) · `404` no frame yet |
+| `POST /ai/v1/simulation` | `X-API-Key` | `{cageId, colors}` | `202` · `409` too many video simulations · `503` no clip / no trained models (`sim-` codes) |
+| `GET /ai/v1/simulation/clip` | `X-API-Key` | — | `{colors, credit, frameCount}` · `503` no clip |
+| `GET /ai/v1/simulation/{cageId}` | `X-API-Key` | — | `{running, startedAt, framesSent, frameCount, credit}` |
+| `DELETE /ai/v1/simulation/{cageId}` | `X-API-Key` | — | `204` |
 
 In mock mode, the upload endpoints validate the media type and return `202`; the background producer queues one contract-valid `BEHAVIOR` and one `AUDIO` event each configured window. Inference endpoints return `503` when mock mode is disabled until real models are implemented.
 
@@ -212,6 +251,7 @@ In mock mode, the upload endpoints validate the media type and return `202`; the
 | `CAGE_ZONES` | empty | JSON: feeder/waterer polygons per cage in fractions of the frame (`app/vision/zones.py`) |
 | `BEHAVIOR_LOG_PATH` | empty | CSV with the features of every window, to label and retrain |
 | `YAMNET_PATH`, `AUDIO_MODEL_PATH` | `models/yamnet.onnx`, `models/audio_clf.joblib` | With both, audio uses YAMNet + SVM/KNN instead of the signal rule |
+| `SIM_CLIP_DIR` | `models/sim_clip` | The prepared video of the simulation cage (section 3.3); missing = no video simulation |
 
 ## 9. Deployment
 

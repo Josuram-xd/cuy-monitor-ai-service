@@ -9,7 +9,8 @@ import hashlib
 import os
 import sys
 import urllib.request
-from pathlib import Path
+import zipfile
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 
 def fetch(url: str, sha256: str, target: Path) -> Path:
@@ -24,6 +25,18 @@ def fetch(url: str, sha256: str, target: Path) -> Path:
         raise ValueError(f"sha256 of {url} is {digest}, expected {sha256}")
     partial.replace(target)
     return target
+
+
+def extract_clip(archive: Path, folder: Path) -> Path:
+    """Unpacks the video simulation clip into folder. A name that leaves the folder is an error."""
+    with zipfile.ZipFile(archive) as bundle:
+        for name in bundle.namelist():
+            if PurePosixPath(name).is_absolute() or PureWindowsPath(name).is_absolute():
+                raise ValueError(f"{archive} has an absolute path: {name}")
+            if ".." in PurePosixPath(name).parts or ".." in PureWindowsPath(name).parts:
+                raise ValueError(f"{archive} has a path outside its folder: {name}")
+        bundle.extractall(folder)
+    return folder
 
 
 # (URL variable, sha256 variable, path variable, default path, what it is)
@@ -44,6 +57,8 @@ MODELS = (
         "models/audio_clf.joblib",
         "audio classifier",
     ),
+    # a zip of the prepared video (Task A7): unpacked next to it, see main()
+    ("SIM_CLIP_URL", "SIM_CLIP_SHA256", "SIM_CLIP_PATH", "models/sim_clip.zip", "simulation clip"),
 )
 
 
@@ -60,7 +75,12 @@ def main() -> int:
             # the behavior model is a pickle: never load one that was not checked
             print(f"{sha_var} is required with {url_var}", file=sys.stderr)
             return 1
-        print(f"The {name} was downloaded to {fetch(url, sha256, target)}")
+        downloaded = fetch(url, sha256, target)
+        print(f"The {name} was downloaded to {downloaded}")
+        if downloaded.suffix == ".zip":
+            folder = extract_clip(downloaded, downloaded.with_suffix(""))
+            downloaded.unlink()
+            print(f"The {name} was unpacked to {folder}")
     return 0
 
 

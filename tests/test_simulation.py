@@ -11,6 +11,8 @@ from app.contracts.events import AudioLabel
 from app.main import app
 from app.testdata.scene import SICK_SPOT, draw_scene
 from app.testdata.simulation import run_simulation
+from app.testdata.video import load_clip
+from tests.clip_helpers import write_clip
 
 HEADERS = {"X-API-Key": "test-secret"}
 
@@ -96,3 +98,70 @@ def test_the_demo_needs_the_api_key_and_a_known_colour(client):
     assert client.post("/ai/v1/simulation", json=body).status_code == 401
     bad = {"cageId": "cage-1", "colors": ["PINK"]}
     assert client.post("/ai/v1/simulation", headers=HEADERS, json=bad).status_code == 422
+
+
+class _TrainedChain:
+    async def submit_frame(self, cage_id, frame, captured_at):
+        return True
+
+
+@pytest.fixture
+def video(client, tmp_path):
+    write_clip(tmp_path / "sim_clip")
+    app.state.sim_clip = load_clip(tmp_path / "sim_clip")
+    app.state.behavior_engine = _TrainedChain()
+    return app.state
+
+
+def test_the_clip_endpoint_gives_the_colours_and_the_credit(client, video):
+    response = client.get("/ai/v1/simulation/clip", headers=HEADERS)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["colors"] == ["RED", "BLUE"]
+    assert body["frameCount"] == 2
+    assert body["credit"]["license"] == "CC BY 4.0"
+
+
+def test_a_video_simulation_starts_once_and_stops_on_delete(client, video):
+    body = {"cageId": "sim-0a1b2c3d", "colors": ["RED"]}
+    assert client.post("/ai/v1/simulation", headers=HEADERS, json=body).status_code == 202
+    first = app.state.simulations["sim-0a1b2c3d"]
+    client.post("/ai/v1/simulation", headers=HEADERS, json=body)
+    assert app.state.simulations["sim-0a1b2c3d"] is first
+
+    status = client.get("/ai/v1/simulation/sim-0a1b2c3d", headers=HEADERS).json()
+    assert status["running"] is True
+    assert status["frameCount"] == 2
+    assert status["credit"]["title"] == "Guinea pigs"
+    assert isinstance(status["framesSent"], int)
+
+    assert client.delete("/ai/v1/simulation/sim-0a1b2c3d", headers=HEADERS).status_code == 204
+    assert client.get("/ai/v1/simulation/sim-0a1b2c3d", headers=HEADERS).json()["running"] is False
+
+
+def test_a_third_video_simulation_is_refused_with_409(client, video):
+    for code in ("sim-aaaaaaaa", "sim-bbbbbbbb"):
+        body = {"cageId": code, "colors": ["RED"]}
+        assert client.post("/ai/v1/simulation", headers=HEADERS, json=body).status_code == 202
+
+    third = {"cageId": "sim-cccccccc", "colors": ["RED"]}
+    assert client.post("/ai/v1/simulation", headers=HEADERS, json=third).status_code == 409
+
+    for code in ("sim-aaaaaaaa", "sim-bbbbbbbb"):
+        client.delete(f"/ai/v1/simulation/{code}", headers=HEADERS)
+
+
+def test_a_video_simulation_needs_the_clip_and_the_trained_models(client, video):
+    body = {"cageId": "sim-0a1b2c3d", "colors": ["RED"]}
+    clip, engine = video.sim_clip, video.behavior_engine
+
+    video.sim_clip = None
+    assert client.post("/ai/v1/simulation", headers=HEADERS, json=body).status_code == 503
+    assert client.get("/ai/v1/simulation/clip", headers=HEADERS).status_code == 503
+
+    video.sim_clip, video.behavior_engine = clip, None
+    detail = client.post("/ai/v1/simulation", headers=HEADERS, json=body)
+    assert detail.status_code == 503
+    assert detail.json()["detail"] == "Trained models not loaded"
+    video.behavior_engine = engine
