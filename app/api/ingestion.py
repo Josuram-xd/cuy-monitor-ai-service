@@ -208,12 +208,12 @@ async def start_simulation(
 
 
 def _start_video_simulation(state, cage_id: str) -> None:
-    """A sim- cage replays the prepared clip through the trained chain (app/testdata/video.py)."""
+    """A sim- cage replays the prepared clip (app/testdata/video.py). The trained chain watches it
+    when its models are loaded; without them the video still plays, with the scripted weight
+    and audio."""
     clip: VideoClip | None = getattr(state, "sim_clip", None)
     if clip is None:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail="No video clip")
-    if getattr(state, "behavior_engine", None) is None:
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail="Trained models not loaded")
     running = {c for c, task in state.simulations.items() if is_simulated(c) and not task.done()}
     if cage_id in running:
         return  # pressing the button again while it runs does not start a second one
@@ -230,7 +230,8 @@ async def _run_video(state, cage_id: str, clip: VideoClip, info: dict) -> None:
     async def submit(frame: bytes) -> None:
         now = datetime.now(UTC)
         state.latest_frames[cage_id] = (now, frame)  # the dashboard's live picture
-        await sink.submit_frame(cage_id, frame, now)
+        if getattr(state, "behavior_engine", None) is not None:
+            await sink.submit_frame(cage_id, frame, now)
 
     def progress(sent: int) -> None:
         info["framesSent"] = sent

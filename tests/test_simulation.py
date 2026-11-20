@@ -152,7 +152,7 @@ def test_a_third_video_simulation_is_refused_with_409(client, video):
         client.delete(f"/ai/v1/simulation/{code}", headers=HEADERS)
 
 
-def test_a_video_simulation_needs_the_clip_and_the_trained_models(client, video):
+def test_a_video_simulation_needs_the_clip_but_not_the_trained_models(client, video):
     body = {"cageId": "sim-0a1b2c3d", "colors": ["RED"]}
     clip, engine = video.sim_clip, video.behavior_engine
 
@@ -160,8 +160,8 @@ def test_a_video_simulation_needs_the_clip_and_the_trained_models(client, video)
     assert client.post("/ai/v1/simulation", headers=HEADERS, json=body).status_code == 503
     assert client.get("/ai/v1/simulation/clip", headers=HEADERS).status_code == 503
 
+    # without the trained models the video still plays (live picture, weight, audio)
     video.sim_clip, video.behavior_engine = clip, None
-    detail = client.post("/ai/v1/simulation", headers=HEADERS, json=body)
-    assert detail.status_code == 503
-    assert detail.json()["detail"] == "Trained models not loaded"
+    assert client.post("/ai/v1/simulation", headers=HEADERS, json=body).status_code == 202
+    client.delete(f"/ai/v1/simulation/{body['cageId']}", headers=HEADERS)
     video.behavior_engine = engine
