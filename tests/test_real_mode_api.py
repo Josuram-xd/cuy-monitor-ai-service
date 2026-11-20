@@ -55,7 +55,10 @@ def test_health_reports_the_real_engines(client):
 
 def test_a_frame_is_kept_for_the_next_analysis(client):
     response = client.post(
-        "/ai/v1/frames", headers=HEADERS, data=FORM, files={"file": ("f.jpg", b"jpeg", "image/jpeg")}
+        "/ai/v1/frames",
+        headers=HEADERS,
+        data=FORM,
+        files={"file": ("f.jpg", b"jpeg", "image/jpeg")},
     )
 
     assert response.status_code == 202
