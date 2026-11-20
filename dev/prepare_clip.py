@@ -10,8 +10,11 @@ with marks painted on the animals.
       --license "CC BY 4.0" --license-url https://creativecommons.org/licenses/by/4.0/ \\
       --source-url https://commons.wikimedia.org/wiki/File:...  [--every 5] [--out data/sim_clip]
 
-Needs ffmpeg on the PATH and tkinter (standard library). Writes OUT/ (frames/, manifest.json) and
-OUT.zip next to it, and prints the sha256 of the zip for SIM_CLIP_SHA256.
+--no-paint keeps the frames as they are: the guinea pigs are then recognised by their coat, as they
+are in a real cage (refs/ holds one crop per colour, the coat the service compares against).
+
+Needs ffmpeg on the PATH and tkinter (standard library). Writes OUT/ (frames/, refs/, manifest.json)
+and OUT.zip next to it, and prints the sha256 of the zip for SIM_CLIP_SHA256.
 """
 
 from __future__ import annotations
@@ -36,6 +39,8 @@ from training.synthetic_dataset import MARK_BGR
 Point = tuple[float, float]
 Clicks = dict[str, dict[int, Point | None]]  # colour -> frame -> the click (None = not visible)
 WIDTH = 640
+# the side of a reference crop, as a fraction of the frame width
+REFERENCE_FRACTION = 0.25
 
 
 def interpolate_marks(clicks: Clicks, frame_count: int) -> list[dict[str, list[int]]]:
@@ -70,13 +75,39 @@ def zone_fractions(points: list[Point], width: int, height: int) -> list[list[fl
     return [[round(x / width, 4), round(y / height, 4)] for x, y in points]
 
 
+def crop_reference(image: np.ndarray, point: Point, side: int) -> np.ndarray:
+    """A square of `side` pixels around the point, moved inside the frame when it is at the edge."""
+    height, width = image.shape[:2]
+    x1 = min(max(round(point[0]) - side // 2, 0), max(width - side, 0))
+    y1 = min(max(round(point[1]) - side // 2, 0), max(height - side, 0))
+    return image[y1 : y1 + side, x1 : x1 + side]
+
+
+def write_references(clicks: Clicks, paths: list[Path], folder: Path, width: int) -> dict[str, str]:
+    """refs/<COLOUR>.jpg from the first visible click of each colour: colour -> path in the clip."""
+    side = round(REFERENCE_FRACTION * width)
+    references = {}
+    for color, points in clicks.items():
+        visible = [(i, p) for i, p in sorted(points.items()) if p is not None]
+        if not visible:
+            continue
+        index, point = visible[0]
+        crop = crop_reference(cv2.imread(str(paths[index])), point, side)
+        folder.mkdir(parents=True, exist_ok=True)
+        cv2.imwrite(str(folder / f"{color}.jpg"), crop, [cv2.IMWRITE_JPEG_QUALITY, 90])
+        references[color] = f"refs/{color}.jpg"
+    return references
+
+
 def pack_clip(folder: Path, archive: Path) -> str:
-    """Zips manifest.json and frames/ (paths relative to the clip) and returns the zip's sha256."""
+    """Zips manifest.json, frames/ and refs/ (paths relative to the clip). Returns the sha256."""
     archive.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as bundle:
         bundle.write(folder / "manifest.json", "manifest.json")
         for frame in sorted((folder / "frames").glob("*.jpg")):
             bundle.write(frame, f"frames/{frame.name}")
+        for reference in sorted((folder / "refs").glob("*.jpg")):
+            bundle.write(reference, f"refs/{reference.name}")
     return hashlib.sha256(archive.read_bytes()).hexdigest()
 
 
@@ -168,6 +199,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--license", required=True)
     parser.add_argument("--license-url", required=True)
     parser.add_argument("--source-url", required=True)
+    parser.add_argument(
+        "--no-paint", action="store_true", help="do not paint the marks (recognise by coat)"
+    )
     args = parser.parse_args(argv)
 
     if shutil.which("ffmpeg") is None:
@@ -185,11 +219,15 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         picker.close()
 
+    # the crops come from the frames before anything is painted: they show the coat, not the mark
+    width = cv2.imread(str(paths[0])).shape[1]
+    references = write_references(clicks, paths, args.out / "refs", width)
     marks = interpolate_marks(clicks, len(paths))
-    for path, frame_marks in zip(paths, marks, strict=True):
-        image = cv2.imread(str(path))
-        paint_marks(image, frame_marks)
-        cv2.imwrite(str(path), image, [cv2.IMWRITE_JPEG_QUALITY, 90])
+    if not args.no_paint:
+        for path, frame_marks in zip(paths, marks, strict=True):
+            image = cv2.imread(str(path))
+            paint_marks(image, frame_marks)
+            cv2.imwrite(str(path), image, [cv2.IMWRITE_JPEG_QUALITY, 90])
 
     manifest = {
         "title": args.title,
@@ -201,6 +239,8 @@ def main(argv: list[str] | None = None) -> int:
         "colors": colors,
         "baseWeightGrams": args.base_weight_grams,
         "zones": zones,
+        "painted": not args.no_paint,
+        "references": references,
         "frames": [
             {"file": f"frames/{path.name}", "marks": frame_marks}
             for path, frame_marks in zip(paths, marks, strict=True)

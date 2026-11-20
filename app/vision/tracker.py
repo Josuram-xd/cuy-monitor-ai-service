@@ -30,10 +30,10 @@ from app.vision.classes import DETECTOR_CLASSES
 from app.vision.detector import Detection
 
 # how far (fraction of the image diagonal) a box with another colour can be from a track and still
-# be taken as that guinea pig with a misread mark
-DEFAULT_MAX_JUMP = 0.15
-# frames a track survives without a detection: 3 s at 2 fps
-DEFAULT_MAX_MISSES = 6
+# be taken as that guinea pig with a misread mark. Animal boxes (A2) are less steady than marks
+DEFAULT_MAX_JUMP = 0.2
+# frames a track survives without a detection: 10 s at 1 fps, hidden behind the house or the feeder
+DEFAULT_MAX_MISSES = 10
 # every new frame the old votes count this much less, so the colour can recover from bad frames
 DEFAULT_VOTE_DECAY = 0.8
 # joining a track of another colour costs more than any distance, so the same colour always wins

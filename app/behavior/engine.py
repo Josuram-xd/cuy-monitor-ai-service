@@ -21,9 +21,12 @@ import numpy as np
 from app.behavior.classifier import BehaviorClassifier
 from app.behavior.features import FEATURE_NAMES, BehaviorFeatures, compute_features
 from app.behavior.window import BehaviorWindows, sample_frame
-from app.contracts import BehaviorEventPayload
+from app.contracts import BehaviorEventPayload, MarkColor
+from app.vision.animal_detector import AnimalBox
 from app.vision.detector import Detection, UnreadableFrame, decode_jpeg
-from app.vision.tracker import HungarianTracker
+from app.vision.identity import Identified, Reference, identify
+from app.vision.references import ReferenceSource
+from app.vision.tracker import HungarianTracker, TrackedMark
 from app.vision.zones import CageZones
 
 logger = logging.getLogger(__name__)
@@ -37,29 +40,35 @@ class ImageDetector(Protocol):
     def detect_image(self, image_bgr: np.ndarray) -> list[Detection]: ...
 
 
-def _detect(detector: ImageDetector, frame: bytes) -> tuple[list[Detection], int, int]:
-    image = decode_jpeg(frame)
-    height, width = image.shape[:2]
-    return detector.detect_image(image), width, height
+class AnimalFinder(Protocol):
+    def detect_image(self, image_bgr: np.ndarray) -> list[AnimalBox]: ...
 
 
 class TrainedBehaviorEngine:
+    """Marks and animals -> identities -> tracker -> window. Both detectors are optional, but the
+    coats are only compared when the animal detector is there (without it: the marks, as before)."""
+
     def __init__(
         self,
-        detector: ImageDetector,
+        detector: ImageDetector | None,
         classifier: BehaviorClassifier,
         zones_for: Callable[[str], CageZones],
         window_seconds: int,
         features_log: Path | None = None,
         tracker_factory: Callable[[], HungarianTracker] = HungarianTracker,
+        animals: AnimalFinder | None = None,
+        references_for: Callable[[str], ReferenceSource] | None = None,
     ):
         self._detector = detector
+        self._animals = animals
+        self._references_for = references_for
         self._classifier = classifier
         self._zones_for = zones_for
         self._window_seconds = window_seconds
         self._features_log = features_log
         self._tracker_factory = tracker_factory
         self._trackers: dict[str, HungarianTracker] = {}
+        self._last: dict[str, list[TrackedMark]] = {}  # the marks of the previous frame, per cage
         self._windows = BehaviorWindows()
         self._in_flight: dict[str, int] = {}
 
@@ -72,8 +81,12 @@ class TrainedBehaviorEngine:
             logger.debug("Dropping a frame of %s: the detector is behind", cage_id)
             return False
         self._in_flight[cage_id] = self._in_flight.get(cage_id, 0) + 1
+        previous = self._last.get(cage_id, [])
         try:
-            detections, width, height = await asyncio.to_thread(_detect, self._detector, frame)
+            references = await self._references(cage_id)
+            identified, width, height = await asyncio.to_thread(
+                self._analyse, frame, references, previous
+            )
         except UnreadableFrame:
             logger.warning("Dropping an unreadable frame of %s", cage_id)
             return False
@@ -84,10 +97,41 @@ class TrainedBehaviorEngine:
             self._in_flight[cage_id] -= 1
         # tracker and window are only touched here, on the event loop: no locks needed
         tracker = self._trackers.setdefault(cage_id, self._tracker_factory())
-        marks = tracker.update(detections, width, height)
-        sample = sample_frame(_as_utc(captured_at), marks, width, height, self._zones_for(cage_id))
+        marks = tracker.update(identified.detections, width, height)
+        self._last[cage_id] = marks
+        sample = sample_frame(
+            _as_utc(captured_at),
+            marks,
+            width,
+            height,
+            self._zones_for(cage_id),
+            identified.unidentified,
+        )
         self._windows.for_cage(cage_id).add(sample)
+        self._learn(cage_id, identified.enrol)
         return True
+
+    async def _references(self, cage_id: str) -> list[Reference]:
+        if self._animals is None or self._references_for is None:
+            return []  # without the animal detector no coat is ever compared
+        return await self._references_for(cage_id).references(cage_id)
+
+    def _learn(self, cage_id: str, enrol: list[tuple[MarkColor, np.ndarray]]) -> None:
+        if self._animals is None or self._references_for is None or not enrol:
+            return
+        source = self._references_for(cage_id)
+        for color, descriptor in enrol:
+            source.enrol(cage_id, color, descriptor)
+
+    def _analyse(
+        self, frame: bytes, references: list[Reference], previous: list[TrackedMark]
+    ) -> tuple[Identified, int, int]:
+        """Runs in a thread: decodes the frame, finds the marks and the animals, identifies them."""
+        image = decode_jpeg(frame)
+        height, width = image.shape[:2]
+        marks = self._detector.detect_image(image) if self._detector is not None else []
+        animals = self._animals.detect_image(image) if self._animals is not None else []
+        return identify(image, marks, animals, references, previous), width, height
 
     async def close_window(self, cage_id: str) -> list[BehaviorEventPayload]:
         """The BEHAVIOR payloads of a cage for the window that just ended; the next starts empty."""

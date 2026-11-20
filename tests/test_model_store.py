@@ -4,7 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import app.main as main
-from app.vision.model_store import load_detector
+from app.vision.model_store import load_animal_detector, load_detector
 from scripts.fetch_models import fetch
 
 
@@ -15,6 +15,13 @@ def test_a_missing_or_broken_detector_is_never_fatal(tmp_path):
     assert load_detector(broken, 0.35) is None
 
 
+def test_a_missing_or_broken_animal_detector_is_never_fatal(tmp_path):
+    assert load_animal_detector(tmp_path / "animal_detector.onnx", 0.05) is None
+    broken = tmp_path / "broken.onnx"
+    broken.write_bytes(b"not an onnx model")
+    assert load_animal_detector(broken, 0.05) is None
+
+
 def test_health_reports_a_loaded_detector_even_in_mock_mode(monkeypatch):
     monkeypatch.setenv("API_KEY", "test-secret")
     monkeypatch.setenv("MOCK_MODE", "true")
@@ -23,7 +30,19 @@ def test_health_reports_a_loaded_detector_even_in_mock_mode(monkeypatch):
     with TestClient(main.app) as client:
         models = client.get("/ai/health").json()["models"]
 
-    assert models == {"detector": True, "behavior": False, "audio": False}
+    assert models == {"detector": True, "animal": False, "behavior": False, "audio": False}
+
+
+def test_health_reports_a_loaded_animal_detector_separately(monkeypatch):
+    monkeypatch.setenv("API_KEY", "test-secret")
+    monkeypatch.setenv("MOCK_MODE", "true")
+    monkeypatch.setattr(main, "load_detector", lambda path, confidence: None)
+    monkeypatch.setattr(main, "load_animal_detector", lambda path, confidence: object())
+
+    with TestClient(main.app) as client:
+        models = client.get("/ai/health").json()["models"]
+
+    assert models == {"detector": False, "animal": True, "behavior": False, "audio": False}
 
 
 def test_the_model_download_is_checked_against_its_sha256(tmp_path):

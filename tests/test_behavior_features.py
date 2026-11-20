@@ -112,6 +112,17 @@ def test_group_distance_only_counts_frames_where_both_were_seen():
     assert red.avg_group_distance == round(320 / DIAGONAL, 2)
 
 
+def test_animals_without_an_identity_count_as_neighbours_but_are_no_events():
+    frames = [
+        sample_frame(START, [_mark(MarkColor.RED, 10, 240)], W, H, ZONES, others=[(330, 240)])
+    ]
+
+    [red] = compute_features(frames, 60)
+
+    assert red.avg_group_distance == round(320 / DIAGONAL, 2)
+    assert red.frames_seen == 1
+
+
 def test_a_rarely_seen_guinea_pig_gets_a_low_confidence():
     frames = _frames({MarkColor.RED: [(320, 240)] * 100, MarkColor.WHITE: [(50, 50)] * 10})
 

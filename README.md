@@ -21,7 +21,7 @@ models are in use. A missing or broken model is never fatal: the service falls b
 
 | Input | `MOCK_MODE=true` | Real mode, without trained models | Real mode, with trained models |
 |---|---|---|---|
-| Frames | contract-valid fake events (or a scenario) | Amazon Bedrock (Kimi K2.5) over up to 6 frames per window | `detector.onnx` → Hungarian tracker → 60 s window → `behavior_rf.joblib` |
+| Frames | contract-valid fake events (or a scenario) | Amazon Bedrock (Kimi K2.5) over up to 6 frames per window | `detector.onnx` + `animal_detector.onnx` (identity by coat) → Hungarian tracker → 60 s window → `behavior_rf.joblib` |
 | Audio | fake events | signal rule: loud × shrill | `yamnet.onnx` embeddings → `audio_clf.joblib` (SVM or KNN) |
 
 ## Design patterns
@@ -116,6 +116,7 @@ their sha256 (`docker build --build-arg <NAME>_URL=... --build-arg <NAME>_SHA256
 | Model | File | Trained with | Build args | State |
 |---|---|---|---|---|
 | Detector YOLO26n (one class per mark colour) | `models/detector.onnx` | `training/train_detector.py` (Colab GPU) | `DETECTOR_URL`, `DETECTOR_SHA256` | Chain proven on synthetic frames; needs the labelled cage frames (Tasks 6.1, 6.3, 7.2) |
+| Animal detector (YOLO-World, prompt `animal`) | `models/animal_detector.onnx` | `training/export_animal_detector.py` (ultralytics, offline) | `ANIMAL_DETECTOR_URL`, `ANIMAL_DETECTOR_SHA256` | Exported offline; without it guinea pigs are identified by their marks only |
 | Behavior Random Forest | `models/behavior_rf.joblib` | `training/train_behavior.py` | `BEHAVIOR_MODEL_URL`, `BEHAVIOR_MODEL_SHA256` | Synthetic windows only; retrain with `BEHAVIOR_LOG_PATH` windows labelled by hand |
 | YAMNet embeddings | `models/yamnet.onnx` | `training/export_yamnet.py` (TensorFlow, Python ≤ 3.13) | `YAMNET_URL`, `YAMNET_SHA256` | Exported and checked against TensorFlow (max difference 5.9e-6) |
 | Audio SVM / KNN | `models/audio_clf.joblib` | `training/train_audio.py` | `AUDIO_MODEL_URL`, `AUDIO_MODEL_SHA256` | Needs recordings of the cage in `normal/` and `distress/` |

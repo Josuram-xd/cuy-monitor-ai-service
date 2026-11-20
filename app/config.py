@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     # the trained detector (Task 7). Missing file = no detector, never an error: see /ai/health
     detector_path: Path = Path("models/detector.onnx")
     detector_confidence: float = Field(default=0.35, gt=0, lt=1)
+    # the animal detector (YOLO-World, Task A2): finds guinea pigs whose mark is hidden. Missing
+    # file = marks only, never an error
+    animal_detector_path: Path = Path("models/animal_detector.onnx")
+    animal_detector_confidence: float = Field(default=0.05, gt=0, lt=1)
 
     # the behavior classifier (Task 10). With it and the detector, the frames go through the
     # trained chain (detector -> tracker -> 60 s window -> Random Forest) instead of Bedrock.

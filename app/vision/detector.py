@@ -113,7 +113,10 @@ def _nms(boxes: np.ndarray, scores: np.ndarray, iou: float) -> list[int]:
 
 
 def parse_output(
-    output: np.ndarray, confidence: float, iou: float
+    output: np.ndarray,
+    confidence: float,
+    iou: float,
+    class_count: int | None = len(DETECTOR_CLASSES),
 ) -> list[tuple[np.ndarray, float, int]]:
     """Model output -> [(xyxy box in model pixels, score, class)].
 
@@ -121,6 +124,9 @@ def parse_output(
     - end-to-end (YOLO26 default export, NMS-free): (1, N, 6) rows of x1, y1, x2, y2, score, class.
     - raw (YOLOv8-style): (1, 4 + classes, N) columns of cx, cy, w, h, then one score per class;
       the best class is taken and overlapping boxes of the same class are removed (NMS).
+
+    class_count is the number of classes the model was trained with; None accepts any number
+    (the animal detector has one "animal" class per prompt).
     """
     rows = np.asarray(output)[0]
     if rows.ndim != 2:
@@ -130,10 +136,9 @@ def parse_output(
         return [(row[:4], float(row[4]), int(row[5])) for row in rows[keep]]
 
     predictions = rows.T
-    class_count = predictions.shape[1] - 4
-    if class_count != len(DETECTOR_CLASSES):
+    if class_count is not None and predictions.shape[1] - 4 != class_count:
         raise ValueError(
-            f"The model has {class_count} classes, the service expects {len(DETECTOR_CLASSES)}"
+            f"The model has {predictions.shape[1] - 4} classes, the service expects {class_count}"
         )
     scores = predictions[:, 4:]
     classes = scores.argmax(axis=1)

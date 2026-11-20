@@ -1,2 +1,4 @@
 # Only for Google Colab (Tasks 7.2 and 10). Never installed in the service image.
 ultralytics>=8.4
+# training/export_animal_detector.py: set_classes downloads the CLIP text encoder the first time
+# (needs internet); the exported ONNX has the prompts baked in and needs no CLIP at runtime.

@@ -15,7 +15,7 @@ import json
 import logging
 import random
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from app.contracts import MarkColor
@@ -59,6 +59,8 @@ class VideoClip:
     zones: CageZones
     credit: dict[str, str]
     base_weight_grams: float
+    # one crop per colour of the guinea pig, to recognise it by its coat (Task A9); empty when old
+    references: dict[MarkColor, Path] = field(default_factory=dict)
 
 
 def load_clip(directory: Path) -> VideoClip | None:
@@ -86,12 +88,19 @@ def _parse_clip(directory: Path, manifest: dict) -> VideoClip:
     base = float(manifest["baseWeightGrams"])
     if base <= 0:
         raise ValueError("baseWeightGrams must be positive")
+    references = {}
+    for name, relative in (manifest.get("references") or {}).items():
+        path = directory / relative
+        if not path.is_file():
+            raise ValueError(f"missing reference crop {path}")
+        references[MarkColor(name)] = path
     return VideoClip(
         frames=frames,
         colors=colors,
         zones=zones,
         credit={key: str(manifest[key]) for key in CREDIT_KEYS},
         base_weight_grams=base,
+        references=references,
     )
 
 

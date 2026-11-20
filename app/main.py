@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from collections.abc import Callable
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Literal
@@ -19,8 +20,10 @@ from app.mock.producer import run_mock_producer, run_scenario_producer
 from app.testdata.scenarios import build_scenario, parse_colors
 from app.testdata.video import VideoClip, is_simulated, load_clip
 from app.vision.analysis import BedrockBehaviorAnalyzer
-from app.vision.model_store import load_detector
+from app.vision.animal_detector import OnnxAnimalDetector
+from app.vision.model_store import load_animal_detector, load_detector
 from app.vision.pipeline import run_behavior_pipeline, run_trained_behavior_pipeline
+from app.vision.references import BackendReferenceSource, ClipReferenceSource, ReferenceSource
 from app.vision.window import FrameWindows
 from app.vision.zones import CageZones
 
@@ -44,25 +47,37 @@ async def lifespan(app: FastAPI):
     app.state.latest_frames: dict[str, tuple[datetime, bytes]] = {}
     app.state.calm_audio_throttle = CalmAudioThrottle(settings.window_seconds)
     app.state.detector = load_detector(settings.detector_path, settings.detector_confidence)
+    app.state.animal_detector = load_animal_detector(
+        settings.animal_detector_path, settings.animal_detector_confidence
+    )
     app.state.behavior_classifier = load_behavior_classifier(settings.behavior_model_path)
     app.state.audio_classifier = load_audio_classifier(
         settings.yamnet_path, settings.audio_model_path
     )
     app.state.behavior_engine = None
     app.state.sim_clip = load_clip(settings.sim_clip_dir)
+    backend_references = None
     if settings.mock_mode:
         producer = asyncio.create_task(_mock_producer(client, settings))
-    elif app.state.detector is not None and app.state.behavior_classifier is not None:
-        # both trained models are there: they replace Bedrock for the frames (audio is the same)
+    elif (
+        app.state.detector is not None or app.state.animal_detector is not None
+    ) and app.state.behavior_classifier is not None:
+        # the classifier and one detector are there: they replace Bedrock for the frames
+        # (audio is the same). The animal detector adds the guinea pigs without a visible mark
+        references_for, backend_references = _references_for(
+            settings, app.state.sim_clip, app.state.animal_detector
+        )
         engine = TrainedBehaviorEngine(
             app.state.detector,
             app.state.behavior_classifier,
             _zones_for(settings, app.state.sim_clip),
             settings.window_seconds,
             settings.behavior_log_path,
+            animals=app.state.animal_detector,
+            references_for=references_for,
         )
         app.state.behavior_engine = engine
-        logger.info("Behavior engine: trained detector + tracker + Random Forest")
+        logger.info("Behavior engine: trained detectors + tracker + Random Forest")
         producer = asyncio.create_task(run_trained_behavior_pipeline(client, engine, settings))
     else:
         logger.info("Behavior engine: Amazon Bedrock (%s)", settings.bedrock_model_id)
@@ -88,6 +103,8 @@ async def lifespan(app: FastAPI):
             await worker
         except asyncio.CancelledError:
             pass
+        if backend_references is not None:
+            await backend_references.close()
         await client.close()
 
 
@@ -99,6 +116,24 @@ def _zones_for(settings: Settings, clip: VideoClip | None):
         return settings.zones_for(cage_id)
 
     return zones_for
+
+
+def _references_for(
+    settings: Settings, clip: VideoClip | None, animals: OnnxAnimalDetector | None
+) -> tuple[Callable[[str], ReferenceSource] | None, BackendReferenceSource | None]:
+    """Where the coats of a cage come from: the clip's crops for a simulated cage, else the backend.
+    No animal detector, no coats: (None, None)."""
+    if animals is None:
+        return None, None
+    backend = BackendReferenceSource(settings, animals)
+    clip_source = ClipReferenceSource(clip.references, animals) if clip is not None else None
+
+    def references_for(cage_id: str) -> ReferenceSource:
+        if clip_source is not None and is_simulated(cage_id):
+            return clip_source
+        return backend
+
+    return references_for, backend
 
 
 def _mock_producer(client: BackendEventClient, settings: Settings):
@@ -113,6 +148,8 @@ def _mock_producer(client: BackendEventClient, settings: Settings):
 
 class ModelStatus(BaseModel):
     detector: bool = False
+    # the animal detector: only true when it loaded (no "real mode" shortcut, it is not Bedrock)
+    animal: bool = False
     behavior: bool = False
     audio: bool = False
 
@@ -139,6 +176,7 @@ def health(request: Request) -> HealthResponse:
     return HealthResponse(
         models=ModelStatus(
             detector=real or onnx_detector,
+            animal=getattr(request.app.state, "animal_detector", None) is not None,
             behavior=real or trained_behavior,
             audio=real or trained_audio,
         ),

@@ -13,6 +13,7 @@ Nothing here decides health: these are measurements (AGENTS rule 1).
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 from app.behavior.window import FrameSample, MarkSample
@@ -89,9 +90,13 @@ def _group_distance(frames: list[FrameSample], color: MarkColor) -> float:
     distances = []
     for frame in frames:
         mine = frame.mark(color)
-        others = [m for m in frame.marks if m.color != color]
-        if mine is not None and others:
-            distances.append(sum(mine.distance_to(o) for o in others) / len(others))
+        if mine is None:
+            continue
+        # the other guinea pigs of the frame: the marked ones and the animals without a mark
+        others = [(m.x, m.y) for m in frame.marks if m.color != color] + list(frame.others)
+        if others:
+            gaps = [min(1.0, math.hypot(mine.x - x, mine.y - y)) for x, y in others]
+            distances.append(sum(gaps) / len(gaps))
     return sum(distances) / len(distances) if distances else NEUTRAL_GROUP_DISTANCE
 
 

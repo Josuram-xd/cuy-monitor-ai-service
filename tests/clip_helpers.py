@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 
 
-def write_clip(directory, colors=("RED", "BLUE")):
+def write_clip(directory, colors=("RED", "BLUE"), references=False):
     (directory / "frames").mkdir(parents=True)
     for number in (1, 2):
         image = np.zeros((48, 64, 3), np.uint8)
@@ -28,4 +28,9 @@ def write_clip(directory, colors=("RED", "BLUE")):
             {"file": "frames/0002.jpg", "marks": {}},
         ],
     }
+    if references:
+        (directory / "refs").mkdir()
+        for color in colors:
+            cv2.imwrite(str(directory / "refs" / f"{color}.jpg"), np.zeros((48, 48, 3), np.uint8))
+        manifest["references"] = {color: f"refs/{color}.jpg" for color in colors}
     (directory / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
