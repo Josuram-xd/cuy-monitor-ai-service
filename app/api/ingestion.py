@@ -100,13 +100,15 @@ async def submit_audio(
     _require_known_cage(cage_id, settings)
     clip = await _read_limited(file, MAX_AUDIO_BYTES)
     try:
-        await _classify_and_report(request.app.state, cage_id, clip)
+        await _classify_and_report(request.app.state, cage_id, clip, captured_at)
     except UnsupportedAudio as exception:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exception)) from None
     return AcceptedResponse(mock_mode=False)
 
 
-async def _classify_and_report(state, cage_id: str, clip: bytes) -> None:
+async def _classify_and_report(
+    state, cage_id: str, clip: bytes, captured_at: datetime | None = None
+) -> None:
     trained = getattr(state, "audio_classifier", None)
     if trained is not None:
         # YAMNet + SVM/KNN in a thread: inference never runs on the event loop
@@ -122,7 +124,7 @@ async def _classify_and_report(state, cage_id: str, clip: bytes) -> None:
             event_id=uuid4(),
             type=EventType.AUDIO,
             cage_id=cage_id,
-            timestamp=datetime.now(UTC),
+            timestamp=captured_at or datetime.now(UTC),
             source="ai-service",
             schema_version=1,
             payload=AudioEventPayload(
@@ -149,6 +151,10 @@ async def start_simulation(
     """The dashboard's demo, asked by the backend (which already checked who owns the cage, so
     CAGE_IDS does not apply). Drawn frames go into the real chain for 35 minutes, and one synthetic
     squeal goes through the audio classifier, so a cage alert shows up right away."""
+    if body.cage_id in settings.physical_cages:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, detail="Physical cage is reserved for monitoring"
+        )
     if settings.mock_mode:
         return AcceptedResponse()
     state = request.app.state

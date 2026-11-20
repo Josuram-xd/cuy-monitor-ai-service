@@ -27,6 +27,8 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
+    if settings.mock_mode and settings.physical_cages:
+        raise ValueError("Physical cage monitoring requires MOCK_MODE=false")
     client = BackendEventClient(settings)
     app.state.backend_event_client = client
     worker = asyncio.create_task(client.run())

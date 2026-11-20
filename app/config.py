@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     # ("cage-1,cage-0a1b2c3d"). Empty = only cage_id. The backend has the final word: it rejects
     # cages that don't exist.
     cage_ids: str = ""
+    hardware_cages: str = ""
     window_seconds: int = Field(default=60, ge=1)
     mock_mode: bool = True
     # mock mode only: replay a test scenario (healthy, lethargic, distress, recovery) instead of
@@ -70,9 +71,13 @@ class Settings(BaseSettings):
         return parse_cage_zones(self.cage_zones).get(cage_id, NO_ZONES)
 
     @property
+    def physical_cages(self) -> set[str]:
+        return {code.strip() for code in self.hardware_cages.split(",") if code.strip()}
+
+    @property
     def allowed_cages(self) -> list[str]:
         cages = [cage.strip() for cage in self.cage_ids.split(",") if cage.strip()]
-        return cages or [self.cage_id]
+        return list(dict.fromkeys([*(cages or [self.cage_id]), *sorted(self.physical_cages)]))
 
     def accepts_cage(self, cage_id: str) -> bool:
         return cage_id in self.allowed_cages
