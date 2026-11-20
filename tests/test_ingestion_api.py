@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -94,3 +96,37 @@ def test_ingestion_endpoints_reject_unsupported_media(client, path, filename, co
     )
 
     assert response.status_code == 415
+
+
+class _AnalysedEngine:
+    """Stands in for the trained engine: its last analysed frame is the annotated picture."""
+
+    async def submit_frame(self, cage_id, frame, captured_at):
+        return True
+
+    def latest_annotated(self, cage_id):
+        return datetime(2026, 10, 5, 14, 32, tzinfo=UTC), b"annotated picture"
+
+
+@pytest.mark.parametrize("client", ["false"], indirect=True)
+def test_the_latest_frame_is_the_annotated_picture_once_analysed(client):
+    headers = {"X-API-Key": "test-secret"}
+    client.post(
+        "/ai/v1/frames",
+        headers=headers,
+        data={"capturedAt": "2026-10-05T14:32:00Z", "cageId": "cage-1"},
+        files={"file": ("frame.jpg", b"raw picture", "image/jpeg")},
+    )
+    client.app.state.behavior_engine = _AnalysedEngine()
+
+    annotated = client.get("/ai/v1/frames/latest", headers=headers, params={"cageId": "cage-1"})
+    assert annotated.content == b"annotated picture"
+
+    client.post(  # a newer raw frame, not analysed yet: the raw one is served
+        "/ai/v1/frames",
+        headers=headers,
+        data={"capturedAt": "2026-10-05T14:33:00Z", "cageId": "cage-1"},
+        files={"file": ("frame.jpg", b"newer raw", "image/jpeg")},
+    )
+    raw = client.get("/ai/v1/frames/latest", headers=headers, params={"cageId": "cage-1"})
+    assert raw.content == b"newer raw"

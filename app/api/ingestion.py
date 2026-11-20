@@ -113,6 +113,10 @@ def latest_frame(
     if latest is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="No frame yet")
     captured_at, frame = latest
+    engine = getattr(request.app.state, "behavior_engine", None)
+    annotated = engine.latest_annotated(cage_id) if engine is not None else None
+    if annotated is not None and annotated[0] >= captured_at:
+        frame = annotated[1]  # analysed as new as the raw frame: the picture with boxes and names
     return Response(
         content=frame,
         media_type="image/jpeg",
