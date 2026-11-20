@@ -111,6 +111,18 @@ def test_a_model_with_other_classes_is_refused():
         parse_output(np.zeros((1, 4 + 3, 5), dtype=np.float32), 0.35, 0.5)
 
 
+def test_a_model_with_one_class_is_read_when_the_class_count_is_given():
+    columns = np.zeros((4 + 1, 2), dtype=np.float32)
+    columns[:4, 0] = [100, 100, 40, 40]
+    columns[4, 0] = 0.8
+
+    found = parse_output(columns[None], 0.35, 0.5, class_count=1)
+
+    assert [(cls, round(score, 2)) for _, score, cls in found] == [(0, 0.8)]
+    with pytest.raises(ValueError, match="classes"):
+        parse_output(columns[None], 0.35, 0.5)
+
+
 def test_an_unreadable_frame_is_an_error_and_inference_runs_off_the_event_loop():
     detector = OnnxDetector(FakeSession(np.zeros((1, 0, 6), dtype=np.float32)))
 
