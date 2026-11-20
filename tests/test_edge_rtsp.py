@@ -10,7 +10,13 @@ import edge_agent.audio as audio_module
 import edge_agent.camera as camera_module
 from edge_agent.agent import choose_camera, choose_microphone
 from edge_agent.audio import A12Microphone, AudioUnavailable, RtspMicrophone
-from edge_agent.camera import A12Camera, CameraUnavailable, RtspCamera, split_jpeg_frames
+from edge_agent.camera import (
+    A12Camera,
+    CameraAuthFailed,
+    CameraUnavailable,
+    RtspCamera,
+    split_jpeg_frames,
+)
 from edge_agent.config import EdgeSettings, mask_url
 from edge_agent.remote_camera import CameraSource
 from edge_agent.rtsp import FfmpegMissing, require_ffmpeg
@@ -173,6 +179,7 @@ async def test_a_stopped_ffmpeg_is_restarted_with_backoff(monkeypatch):
         delays.append(seconds)
 
     monkeypatch.setattr(camera_module, "start_ffmpeg", fake_ffmpeg)
+    monkeypatch.setattr(camera_module, "probe_rtsp", _unreachable)
     camera = RtspCamera(RTSP, fps=1)
 
     with pytest.raises(asyncio.CancelledError):
@@ -182,6 +189,33 @@ async def test_a_stopped_ffmpeg_is_restarted_with_backoff(monkeypatch):
     # 1 s after the failed start; after the frame the backoff restarted, so 1 s again
     assert delays == [1, 1]
     assert await camera.snapshot() == FRAME_A
+
+
+async def _unreachable(url, timeout=15.0):
+    return "UNREACHABLE"
+
+
+@pytest.mark.anyio
+async def test_a_refused_login_is_not_retried(monkeypatch):
+    started = []
+
+    async def fake_ffmpeg(url, *args):
+        started.append(url)
+        raise FileNotFoundError("ffmpeg")  # no frames: the restart would follow
+
+    async def refused(url, timeout=15.0):
+        return "AUTH_FAILED"
+
+    async def sleep(seconds):
+        pass
+
+    monkeypatch.setattr(camera_module, "start_ffmpeg", fake_ffmpeg)
+    monkeypatch.setattr(camera_module, "probe_rtsp", refused)
+
+    with pytest.raises(CameraAuthFailed):
+        await RtspCamera(RTSP, fps=1).run(sleep=sleep)
+
+    assert started == [RTSP]  # one ffmpeg, then the login is refused: no second attempt
 
 
 @pytest.mark.anyio

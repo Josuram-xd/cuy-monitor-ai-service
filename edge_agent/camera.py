@@ -16,7 +16,7 @@ from collections.abc import Awaitable, Callable
 import httpx
 
 from edge_agent.backoff import Backoff
-from edge_agent.rtsp import FFMPEG_READ_BYTES, start_ffmpeg, stop_ffmpeg
+from edge_agent.rtsp import FFMPEG_READ_BYTES, probe_rtsp, start_ffmpeg, stop_ffmpeg
 
 logger = logging.getLogger("edge_agent")
 
@@ -32,6 +32,10 @@ STALE_SECONDS = 10.0
 
 class CameraUnavailable(Exception):
     """The phone did not answer, or answered something that is not a JPEG."""
+
+
+class CameraAuthFailed(Exception):
+    """The RTSP camera refused the login. Retries lock a Tapo ~30 min: wait for new settings."""
 
 
 def split_jpeg_frames(data: bytes) -> tuple[list[bytes], bytes]:
@@ -126,6 +130,9 @@ class RtspCamera:
                 reason = f"{reason}: {exception}"
             if frames:
                 backoff.reset()
+            # the probe is one more login: only after a failure, and before the next ffmpeg
+            if await probe_rtsp(self._url) == "AUTH_FAILED":
+                raise CameraAuthFailed("the RTSP camera refused the login")
             delay = backoff.next_delay()
             logger.warning("No frames from the RTSP camera (%s); restart in %.0f s", reason, delay)
             await sleep(delay)
