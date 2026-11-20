@@ -19,6 +19,10 @@ How it behaves when something fails:
 | The upload is slower than the microphone | Keeps at most 5 clips; the oldest one is dropped |
 | 401 / 400 (wrong key or cage code) | Logs the error and tries again once a minute, until someone fixes `.env` |
 
+La cámara se elige desde la app (página de la jaula → Cámara): el agente la lee del backend cada
+15 s, cambia de cámara sin reiniciarse y reporta si la ve bien. `A12_URL` y `CAMERA_RTSP_URL` solo son
+respaldo para cuando la app no tiene cámara. La sección 1b es la referencia técnica del RTSP.
+
 ## 1. Prepare the phone
 
 1. Install **IP Webcam** (Pavel Khlebovich) on the A12 and give it camera and microphone permissions.
@@ -46,7 +50,7 @@ the phone: set `CAMERA_RTSP_URL` and leave `A12_URL` empty.
    - Windows: `winget install Gyan.FFmpeg`
    - Linux: `sudo apt install ffmpeg`
    - The Docker image does not include ffmpeg: on Docker, add `RUN apt-get install -y ffmpeg` to `edge_agent/Dockerfile`.
-     Without ffmpeg the agent does not start and says so.
+     Without ffmpeg the agent keeps running and the app shows that the laptop needs it.
 6. The camera audio comes from the same stream. If the camera has no audio enabled, set `AUDIO_ENABLED=false`,
    otherwise the agent keeps retrying the audio and logs a warning every few seconds.
 
@@ -59,9 +63,9 @@ in `edge_agent/.env`.
 cp edge_agent/config.example.env edge_agent/.env   # Windows: copy edge_agent\config.example.env edge_agent\.env
 ```
 
-Fill in `A12_URL`, `AI_URL`, `API_KEY` (the same as `infra/.env` of the backend) and `CAGE_ID` (the code shown
-in the dashboard, "Mis jaulas"). `.env` is never committed. For the Tapo C200 (section 1b) fill in `CAMERA_RTSP_URL`
-instead of `A12_URL`.
+Fill in `AI_URL`, `API_KEY` (the same as `infra/.env` of the backend) and `CAGE_ID` (the code shown
+in the dashboard, "Mis jaulas"). `.env` is never committed. `A12_URL` or `CAMERA_RTSP_URL` are optional fallbacks:
+the camera itself is set up in the app.
 
 ## 3. Install as a service
 
