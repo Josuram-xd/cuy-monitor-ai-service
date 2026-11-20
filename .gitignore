@@ -14,3 +14,7 @@ build/
 # trained models are published in GitHub Releases, never committed
 models/*.onnx
 models/*.joblib
+# the video simulation clip (a zip of frames and manifest, Task A6): never committed
+models/sim_clip/
+models/sim_clip.zip
+data/
