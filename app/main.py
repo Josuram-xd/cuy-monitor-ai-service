@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from datetime import datetime
 from typing import Literal
 
 from fastapi import FastAPI, Request
@@ -16,10 +17,12 @@ from app.config import Settings, get_settings
 from app.messaging.backend_client import BackendEventClient
 from app.mock.producer import run_mock_producer, run_scenario_producer
 from app.testdata.scenarios import build_scenario, parse_colors
+from app.testdata.video import VideoClip, is_simulated, load_clip
 from app.vision.analysis import BedrockBehaviorAnalyzer
 from app.vision.model_store import load_detector
 from app.vision.pipeline import run_behavior_pipeline, run_trained_behavior_pipeline
 from app.vision.window import FrameWindows
+from app.vision.zones import CageZones
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +39,9 @@ async def lifespan(app: FastAPI):
     # Amazon Bedrock looks at the frames gathered each window.
     app.state.frame_windows = FrameWindows()
     app.state.simulations = {}  # cage id -> the running demo task (Simulación button)
+    app.state.simulation_info = {}  # cage id -> progress of a running video simulation
+    # cage id -> (captured at, last JPEG): the dashboard's live picture of each cage
+    app.state.latest_frames: dict[str, tuple[datetime, bytes]] = {}
     app.state.calm_audio_throttle = CalmAudioThrottle(settings.window_seconds)
     app.state.detector = load_detector(settings.detector_path, settings.detector_confidence)
     app.state.behavior_classifier = load_behavior_classifier(settings.behavior_model_path)
@@ -43,6 +49,7 @@ async def lifespan(app: FastAPI):
         settings.yamnet_path, settings.audio_model_path
     )
     app.state.behavior_engine = None
+    app.state.sim_clip = load_clip(settings.sim_clip_dir)
     if settings.mock_mode:
         producer = asyncio.create_task(_mock_producer(client, settings))
     elif app.state.detector is not None and app.state.behavior_classifier is not None:
@@ -50,7 +57,7 @@ async def lifespan(app: FastAPI):
         engine = TrainedBehaviorEngine(
             app.state.detector,
             app.state.behavior_classifier,
-            settings.zones_for,
+            _zones_for(settings, app.state.sim_clip),
             settings.window_seconds,
             settings.behavior_log_path,
         )
@@ -82,6 +89,16 @@ async def lifespan(app: FastAPI):
         except asyncio.CancelledError:
             pass
         await client.close()
+
+
+def _zones_for(settings: Settings, clip: VideoClip | None):
+    # a simulated cage is judged on the clip's zones: its picture is not the farm's
+    def zones_for(cage_id: str) -> CageZones:
+        if clip is not None and is_simulated(cage_id):
+            return clip.zones
+        return settings.zones_for(cage_id)
+
+    return zones_for
 
 
 def _mock_producer(client: BackendEventClient, settings: Settings):

@@ -34,6 +34,40 @@ def test_mock_ingestion_endpoints_accept_authenticated_media(client, path, filen
     assert response.json() == {"status": "accepted", "mockMode": True}
 
 
+@pytest.mark.parametrize("client", ["false"], indirect=True)
+def test_the_latest_frame_of_a_cage_is_served_back(client):
+    frame = b"\xff\xd8 jpeg bytes"
+    client.post(
+        "/ai/v1/frames",
+        headers={"X-API-Key": "test-secret"},
+        data={"capturedAt": "2026-10-05T14:32:00Z", "cageId": "cage-1"},
+        files={"file": ("frame.jpg", frame, "image/jpeg")},
+    )
+
+    response = client.get(
+        "/ai/v1/frames/latest", headers={"X-API-Key": "test-secret"}, params={"cageId": "cage-1"}
+    )
+
+    assert response.status_code == 200
+    assert response.content == frame
+    assert response.headers["content-type"] == "image/jpeg"
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["x-captured-at"].startswith("2026-10-05T14:32:00")
+
+
+@pytest.mark.parametrize("client", ["false"], indirect=True)
+def test_a_cage_without_a_frame_gets_404(client):
+    response = client.get(
+        "/ai/v1/frames/latest", headers={"X-API-Key": "test-secret"}, params={"cageId": "cage-9"}
+    )
+
+    assert response.status_code == 404
+
+
+def test_the_latest_frame_needs_the_api_key(client):
+    assert client.get("/ai/v1/frames/latest", params={"cageId": "cage-1"}).status_code == 401
+
+
 def test_frame_endpoint_requires_api_key(client):
     response = client.post(
         "/ai/v1/frames",
