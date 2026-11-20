@@ -4,8 +4,9 @@ import wave
 import numpy as np
 import pytest
 
-from app.audio.classifier import UnsupportedAudio, classify_clip
+from app.audio.classifier import SIGNAL_RULE, UnsupportedAudio, classify_clip
 from app.contracts.events import AudioLabel
+from app.testdata.audio import ClipKind, synthesize_clip
 
 RATE = 16_000
 
@@ -65,3 +66,14 @@ def test_stereo_is_mixed_down():
 def test_unsupported_audio_is_refused(clip):
     with pytest.raises(UnsupportedAudio):
         classify_clip(clip)
+
+
+def test_the_signal_rule_strategy_gives_the_same_answer_as_the_rule():
+    clip = synthesize_clip(ClipKind.SQUEAL)
+
+    assert SIGNAL_RULE.classify(clip) == classify_clip(clip)
+
+
+def test_the_signal_rule_strategy_refuses_unsupported_audio():
+    with pytest.raises(UnsupportedAudio):
+        SIGNAL_RULE.classify(b"mock media")
