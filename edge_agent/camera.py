@@ -50,10 +50,21 @@ def split_jpeg_frames(data: bytes) -> tuple[list[bytes], bytes]:
     return frames, data[-1:] if data.endswith(b"\xff") else b""
 
 
+async def probe_phone(client: httpx.AsyncClient, base_url: str) -> str:
+    """CONNECTED or UNREACHABLE: one frame from the phone is enough to know it works."""
+    try:
+        await A12Camera(client, base_url).snapshot()
+    except CameraUnavailable:
+        return "UNREACHABLE"
+    return "CONNECTED"
+
+
 class A12Camera:
     def __init__(self, client: httpx.AsyncClient, base_url: str):
         self._client = client
         self._url = f"{base_url}/shot.jpg"
+        # time.monotonic() of the last good frame (0.0 = none yet)
+        self.frame_at = 0.0
 
     async def snapshot(self) -> bytes:
         try:
@@ -65,6 +76,7 @@ class A12Camera:
         frame = response.content
         if not frame.startswith(JPEG_START):
             raise CameraUnavailable("the phone did not send a JPEG")
+        self.frame_at = time.monotonic()
         return frame
 
 
@@ -76,6 +88,11 @@ class RtspCamera:
         self._fps = fps
         self._latest: bytes | None = None
         self._taken_at = 0.0
+
+    @property
+    def frame_at(self) -> float:
+        """time.monotonic() of the last good frame (0.0 = none yet)."""
+        return self._taken_at
 
     async def snapshot(self) -> bytes:
         if self._latest is None or time.monotonic() - self._taken_at > STALE_SECONDS:

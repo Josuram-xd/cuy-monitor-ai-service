@@ -2,14 +2,17 @@
 
 import asyncio
 import io
+import logging
 import struct
 import wave
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import httpx
 import pytest
 
-from edge_agent.agent import ClipBuffer, record_audio, run_frames, send_audio
+import edge_agent.agent as agent
+from edge_agent.agent import ClipBuffer, record_audio, run, run_frames, send_audio
 from edge_agent.audio import (
     A12Microphone,
     AudioUnavailable,
@@ -20,6 +23,7 @@ from edge_agent.audio import (
 from edge_agent.backoff import Backoff
 from edge_agent.camera import A12Camera, CameraUnavailable
 from edge_agent.config import EdgeSettings
+from edge_agent.remote_camera import BackendUnreachable, CameraSource
 from edge_agent.uploader import AiServiceUploader, SendResult, utc_iso
 
 JPEG = b"\xff\xd8\xff\xe0fake-jpeg"
@@ -76,6 +80,19 @@ def test_settings_need_the_phone_the_service_the_key_and_the_cage(monkeypatch, t
     assert settings.a12_url == "http://phone:8080"
     assert settings.ai_url == "https://ai.example"
     assert settings.fps == 1.0
+    assert settings.backend_url == "" and settings.camera_poll_seconds == 15.0
+
+    backend = EdgeSettings(
+        _env_file=None,
+        ai_url=AI,
+        api_key="k",
+        cage_id="c",
+        backend_url="https://api.example/",
+        camera_poll_seconds=5,
+    )
+    assert backend.backend_url == "https://api.example"
+    with pytest.raises(ValueError):
+        EdgeSettings(_env_file=None, ai_url=AI, api_key="k", cage_id="c", camera_poll_seconds=1)
 
     with pytest.raises(ValueError):
         EdgeSettings(_env_file=None, a12_url="phone", ai_url=AI, api_key="k", cage_id="c")
@@ -342,3 +359,192 @@ async def test_a_dropped_audio_stream_reconnects_with_backoff():
     assert len(buffer) == 2
     # a clip arrived after the first reconnection, so the backoff started again
     assert clock.slept == [1, 1]
+
+
+@pytest.mark.anyio
+async def test_the_warnings_name_the_camera_that_is_failing(caplog):
+    class _Microphone:
+        def clips(self, seconds):
+            raise AudioUnavailable("the camera audio stream ended")
+
+    class _Silent:
+        async def snapshot(self):
+            raise CameraUnavailable("no recent frame")
+
+    async def stop(seconds):
+        raise asyncio.CancelledError
+
+    caplog.set_level(logging.WARNING, logger="edge_agent")
+    with pytest.raises(asyncio.CancelledError):
+        await record_audio(_Microphone(), ClipBuffer(), 1.0, sleep=stop, source="the RTSP camera")
+    with pytest.raises(asyncio.CancelledError):
+        await run_frames(
+            _Silent(), _Uploader([]), 1, sleep=stop, max_ticks=1, source="the RTSP camera"
+        )
+
+    assert "No audio from the RTSP camera" in caplog.text
+    assert "No frame from the RTSP camera" in caplog.text
+    assert "from the phone" not in caplog.text
+
+
+# ---- Task 12.6: the camera from the backend, switched while the agent runs
+
+
+class _Backend:
+    """Answers the camera questions of run() in order (a CameraSource, None or an exception).
+
+    run() stops after the last answer: the sleep that follows it raises _Stop.
+    """
+
+    def __init__(self, *answers, probe="CONNECTED"):
+        self.answers = list(answers)
+        self.probe_answer = probe
+        self.probed: list[CameraSource] = []
+
+    async def fetch(self, client, base, key):
+        answer = self.answers.pop(0)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    async def probe(self, source, phone):
+        self.probed.append(source)
+        return self.probe_answer
+
+    async def sleep(self, seconds):
+        await asyncio.sleep(0)  # lets the camera task start, as a real poll would
+        if not self.answers:
+            raise _Stop
+
+
+class _Stop(Exception):
+    pass
+
+
+PHONE_CAMERA = CameraSource("PHONE", "http://192.168.1.50:8080", version=3)
+RTSP_CAMERA = CameraSource("RTSP", "rtsp://tapo:pw@192.168.1.60:554/stream2", version=4)
+
+
+def _supervised_settings(**overrides) -> EdgeSettings:
+    values = {"ai_url": AI, "api_key": "k", "cage_id": "cage-1"} | overrides
+    return EdgeSettings(_env_file=None, **values)
+
+
+@pytest.fixture
+def loops(monkeypatch):
+    """Fake camera loops (they run until cancelled) and a recorder of the status reports."""
+    started, stopped, reports = [], [], []
+
+    async def fake_run_source(source, camera, settings, phone, uploader):
+        started.append(source)
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            stopped.append(source)
+            raise
+
+    async def fake_report(client, base, key, version, status):
+        reports.append((version, status))
+
+    monkeypatch.setattr(agent, "run_source", fake_run_source)
+    monkeypatch.setattr(agent, "report_status", fake_report)
+    return SimpleNamespace(started=started, stopped=stopped, reports=reports)
+
+
+@pytest.mark.anyio
+async def test_a_new_camera_from_the_backend_replaces_the_old_one(loops):
+    backend = _Backend(PHONE_CAMERA, RTSP_CAMERA)
+
+    with pytest.raises(_Stop):
+        await run(
+            _supervised_settings(), fetch=backend.fetch, probe=backend.probe, sleep=backend.sleep
+        )
+
+    assert loops.started == [PHONE_CAMERA, RTSP_CAMERA]
+    assert loops.stopped == [PHONE_CAMERA]
+
+
+@pytest.mark.anyio
+async def test_an_unreachable_backend_keeps_the_camera_that_works(loops):
+    backend = _Backend(PHONE_CAMERA, BackendUnreachable("down"), BackendUnreachable("down"))
+
+    with pytest.raises(_Stop):
+        await run(
+            _supervised_settings(), fetch=backend.fetch, probe=backend.probe, sleep=backend.sleep
+        )
+
+    assert loops.started == [PHONE_CAMERA] and loops.stopped == []
+    assert backend.probed == [PHONE_CAMERA]  # no new probe while the backend is down
+
+
+@pytest.mark.anyio
+async def test_without_a_backend_camera_the_env_one_is_used(loops):
+    backend = _Backend(None)
+    settings = _supervised_settings(a12_url="http://phone:8080")
+
+    with pytest.raises(_Stop):
+        await run(settings, fetch=backend.fetch, probe=backend.probe, sleep=backend.sleep)
+
+    assert loops.started == [CameraSource("PHONE", "http://phone:8080")]
+    assert loops.reports == []  # .env cameras have no version to report
+
+
+@pytest.mark.anyio
+async def test_no_camera_anywhere_starts_no_loops(loops):
+    backend = _Backend(None, None)
+
+    with pytest.raises(_Stop):
+        await run(
+            _supervised_settings(), fetch=backend.fetch, probe=backend.probe, sleep=backend.sleep
+        )
+
+    assert loops.started == [] and backend.probed == []
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("probed", ["AUTH_FAILED", "FFMPEG_MISSING"])
+async def test_a_failed_test_is_reported_with_the_backend_version(loops, probed):
+    backend = _Backend(PHONE_CAMERA, PHONE_CAMERA, probe=probed)
+
+    with pytest.raises(_Stop):
+        await run(
+            _supervised_settings(), fetch=backend.fetch, probe=backend.probe, sleep=backend.sleep
+        )
+
+    assert loops.reports == [(3, probed), (3, probed)]
+    # FFMPEG_MISSING means no ffmpeg loops; the phone camera is still started for AUTH_FAILED
+    assert len(loops.started) == (0 if probed == "FFMPEG_MISSING" else 1)
+
+
+@pytest.mark.anyio
+async def test_right_after_a_switch_the_status_waits_for_the_first_frames(loops):
+    backend = _Backend(RTSP_CAMERA, RTSP_CAMERA, probe="CONNECTED")
+
+    with pytest.raises(_Stop):
+        await run(
+            _supervised_settings(), fetch=backend.fetch, probe=backend.probe, sleep=backend.sleep
+        )
+
+    # round 1: a fresh connection is not reported yet; round 2: no frames were produced by the fake
+    assert loops.reports == [(4, "UNREACHABLE")]
+
+
+@pytest.mark.anyio
+async def test_a_camera_loop_that_died_is_started_again(loops, monkeypatch):
+    calls = []
+
+    async def dying_then_fine(source, camera, settings, phone, uploader):
+        calls.append(source)
+        if len(calls) == 1:
+            raise RuntimeError("boom")
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(agent, "run_source", dying_then_fine)
+    backend = _Backend(PHONE_CAMERA, PHONE_CAMERA)
+
+    with pytest.raises(_Stop):
+        await run(
+            _supervised_settings(), fetch=backend.fetch, probe=backend.probe, sleep=backend.sleep
+        )
+
+    assert calls == [PHONE_CAMERA, PHONE_CAMERA]

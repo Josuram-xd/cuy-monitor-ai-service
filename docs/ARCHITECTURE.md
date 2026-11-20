@@ -186,8 +186,13 @@ In mock mode, the upload endpoints validate the media type and return `202`; the
 - Reads the A12 stream from IP Webcam (`http://<A12-IP>:8080/video` and audio endpoint) over the LAN.
 - Sends 1–2 fps JPEGs and ~1 s WAV clips to `https://cuymonitor.duckdns.org/ai/...` with `X-API-Key`.
 - Retries with backoff if the internet drops; drops frames rather than building an unbounded queue.
-- Config in `edge_agent/.env` (template `config.example.env`): `A12_URL`, `AI_URL`, `API_KEY`, `CAGE_ID`, `FPS`.
-  Optional `CAMERA_RTSP_URL` (TP-Link Tapo C200): frames and audio come from its RTSP stream through ffmpeg instead of the phone.
+- Config in `edge_agent/.env` (template `config.example.env`): `AI_URL`, `API_KEY`, `CAGE_ID`, `FPS`, and optional
+  `BACKEND_URL` (empty = the `AI_URL` host; local development only) and `CAMERA_POLL_SECONDS` (15).
+  `A12_URL` and `CAMERA_RTSP_URL` (TP-Link Tapo C200) are only fallbacks for when the app has no camera.
+- Camera from the app: every poll the agent calls `GET {BACKEND_URL}/api/v1/ingestion/station/camera` (`X-API-Key`):
+  200 gives the camera the breeder set, 204 none. A switch stops the old loops, probes the new camera once
+  (one ffmpeg for RTSP) and starts it. Then it reports `POST .../station/camera/status` with `CONNECTED`,
+  `AUTH_FAILED`, `UNREACHABLE` or `FFMPEG_MISSING`. The backend answers `OFFLINE` when reports stop.
 - Frames: `GET {A12_URL}/shot.jpg` every tick (no MJPEG decoding, light for the Celeron). Audio: the endless
   WAV at `{A12_URL}/audio.wav`, cut into ~1 s WAV clips. No queue for frames (a failed one is replaced by a fresh
   one); at most 5 clips waiting. Install guide, systemd unit and optional Dockerfile in `edge_agent/`.

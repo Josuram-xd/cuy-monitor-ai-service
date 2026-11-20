@@ -9,7 +9,6 @@ from pydantic import ValidationError
 
 from edge_agent.agent import run
 from edge_agent.config import EdgeSettings
-from edge_agent.rtsp import FfmpegMissing
 
 
 def main() -> int:
@@ -29,9 +28,6 @@ def main() -> int:
         return 2
     try:
         asyncio.run(run(settings))
-    except FfmpegMissing as exception:
-        print(exception, file=sys.stderr)
-        return 2
     except KeyboardInterrupt:
         pass
     return 0
