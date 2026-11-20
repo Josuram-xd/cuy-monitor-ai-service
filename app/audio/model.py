@@ -41,6 +41,8 @@ class Embedder(Protocol):
 
 
 class TrainedAudioClassifier:
+    """Strategy: trained. Used instead of the signal rule when both model files are loaded."""
+
     def __init__(self, embedder: Embedder, model: ProbabilisticModel):
         classes = [str(c) for c in model.classes_]
         if sorted(classes) != sorted(CLASSES):
