@@ -9,6 +9,7 @@ from app.bedrock.runtime import BedrockError
 from app.config import Settings
 from app.contracts import BehaviorEventPayload, EventEnvelope, EventType
 from app.messaging.backend_client import BackendEventClient
+from app.testdata.video import source_for
 from app.vision.analysis import BedrockBehaviorAnalyzer
 from app.vision.window import FrameWindow, FrameWindows
 
@@ -38,7 +39,7 @@ async def send_behavior_events(
                 type=EventType.BEHAVIOR,
                 cage_id=cage_id,
                 timestamp=timestamp,
-                source="ai-service",
+                source=source_for(cage_id),
                 schema_version=1,
                 payload=payload,
             )
