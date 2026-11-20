@@ -56,6 +56,10 @@ class Settings(BaseSettings):
     yamnet_path: Path = Path("models/yamnet.onnx")
     audio_model_path: Path = Path("models/audio_clf.joblib")
 
+    # the video simulation clip (dev/prepare_clip.py, fetched at build time). Missing = no video
+    # simulation, never an error: see app/testdata/video.py
+    sim_clip_dir: Path = Path("models/sim_clip")
+
     @field_validator("cage_zones")
     @classmethod
     def zones_are_valid(cls, value: str) -> str:
