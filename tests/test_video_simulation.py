@@ -38,6 +38,30 @@ def test_a_valid_clip_is_loaded(tmp_path):
     assert clip.zones.feeder is not None and clip.zones.waterer is None
 
 
+def test_the_reference_crops_of_a_clip_are_listed_by_colour(tmp_path):
+    write_clip(tmp_path, references=True)
+
+    clip = load_clip(tmp_path)
+
+    assert clip.references == {
+        MarkColor.RED: tmp_path / "refs" / "RED.jpg",
+        MarkColor.BLUE: tmp_path / "refs" / "BLUE.jpg",
+    }
+
+
+def test_an_old_clip_without_references_has_none(tmp_path):
+    write_clip(tmp_path)
+
+    assert load_clip(tmp_path).references == {}
+
+
+def test_a_listed_crop_that_is_missing_makes_the_clip_broken(tmp_path):
+    write_clip(tmp_path, references=True)
+    (tmp_path / "refs" / "RED.jpg").unlink()
+
+    assert load_clip(tmp_path) is None
+
+
 def test_a_missing_clip_folder_gives_none(tmp_path):
     assert load_clip(tmp_path / "absent") is None
 
